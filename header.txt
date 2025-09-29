@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##source=msprime 0.1.7.dev454+ngbf7e6c9
+##contig=<ID=1,length=1000000>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##bcftools_viewVersion=1.4.1+htslib-1.4.1
+##bcftools_viewCommand=view -O z -o ../example/example.vcf.gz /tmp/test.vcf; Date=Wed May 31 11:44:41 2017
+##bcftools_viewCommand=view -O z -o example/example.vcf.gz example/example.vcf; Date=Wed May 31 11:52:07 2017

@@ -41,13 +41,16 @@ help()
                 [-t | --type] Type of demographic model (1:eq_sim_nislands)
                 [-p | --population] Deme to sample
                 [-i | --iterations] Number of iterations
+                [-o | --mode] Comma-separated steps to run: iicr,simulate,stats,psmc,smcpp or none
+                [-q | --psmc-patterns] Comma-separated PSMC -p vectors
+                [-B | --psmc-s] fq2psmcfa -s bin size for PSMC
                 [ -h | --help  ]"
     exit 2
 }
 
-SHORT=n:N:m:s:b:t:p:i:c:d:g:e:a:M:P:L:,h
+SHORT=n:N:m:s:b:t:p:i:c:d:g:e:a:M:P:L:o:q:B:h
 #nislands,Ndeme,migration,samples,size,type_model,pop,iterations,mutationrate,growrate,events
-LONG=nislands:Ndeme:migration:samples:sizes:type:population:iterations:parfile,help
+LONG=nislands:Ndeme:migration:samples:sizes:type:population:iterations:parfile:,mode:,psmc-patterns:,psmc-s:,help
 OPTS=$(getopt -a -n magikarp --options $SHORT --longoptions $LONG -- "$@")
 
 VALID_ARGUMENTS=$# # Returns the count of arguments that are in short or long options
@@ -65,6 +68,9 @@ GR=0
 EVENTS=0
 PAR=0
 NMD=0
+MODE=iicr,simulate,stats,psmc
+PSMC_PATTERNS=4+25*2+4+6
+PSMC_S=100
 
 eval set -- "$OPTS"
 
@@ -138,6 +144,18 @@ do
             shift 2
     
             ;;
+    -o | --mode )
+            MODE=$2
+            shift 2
+            ;;
+    -q | --psmc-patterns )
+            PSMC_PATTERNS=$2
+            shift 2
+            ;;
+    -B | --psmc-s )
+            PSMC_S=$2
+            shift 2
+            ;;
 
 
         -h | --help)
@@ -184,6 +202,9 @@ gr= $GR
 events=$EVENTS"
 NMD=$NMD
 P=$P
+mode=$MODE
+psmc_patterns=$PSMC_PATTERNS
+psmc_s=$PSMC_S
 
 # Export
 export N_DEME
@@ -197,6 +218,9 @@ export GR
 export EVENTS
 export NMD
 export P
+export mode
+export psmc_patterns
+export psmc_s
 
 # Call panmitic model
 python -c 'import gyarados as gy, os # import packages;
@@ -209,7 +233,10 @@ chr=os.environ["CHR"] # import bash variable $CHR;
 mu=os.environ["MU"] # import bash variable $MU
 gr=os.environ["GR"];
 e=os.environ["EVENTS"];
-gy.GYARADOS_PAR(type=type,N=N,sizes=sizes,sample=sample,niter=niter, chr=chr, mu=mu, gr=gr, evs=e) # run'
+mode=os.environ["mode"];
+psmc_patterns=os.environ["psmc_patterns"];
+psmc_s=os.environ["psmc_s"];
+gy.GYARADOS_PAR(type=type,N=N,sizes=sizes,sample=sample,niter=niter, chr=chr, mu=mu, gr=gr, evs=e, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s) # run'
 
 
 
@@ -257,6 +284,9 @@ gr=$GR
 events=$EVENTS
 NMD=$NMD
 P=$P
+mode=$MODE
+psmc_patterns=$PSMC_PATTERNS
+psmc_s=$PSMC_S
 "
 
 
@@ -276,6 +306,9 @@ export GR
 export EVENTS
 export NMD
 export P
+export mode
+export psmc_patterns
+export psmc_s
 
 ## run the model 
 
@@ -307,7 +340,10 @@ gr=os.environ["GR"] # import bash $GR;
 e=os.environ["EVENTS"] # import bash $EVENTS;
 NMD=os.environ["NMD"] # import bash $NMD;
 P=os.environ["P"] # import bash $NMD;
-gy.GYARADOS_PAR(type=type,N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,nislands=nislands,mig=mig,p=pop, mu=mu, gr=gr, evs=e, M=NMD, Nt=P) # run'
+mode=os.environ["mode"];
+psmc_patterns=os.environ["psmc_patterns"];
+psmc_s=os.environ["psmc_s"];
+gy.GYARADOS_PAR(type=type,N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,nislands=nislands,mig=mig,p=pop, mu=mu, gr=gr, evs=e, M=NMD, Nt=P, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s) # run'
 
 
 fi
@@ -329,13 +365,19 @@ export PAR
 #export POP
 export TYPE
 export ITER
+export MODE
+export PSMC_PATTERNS
+export PSMC_S
 
 python -c 'import gyarados as gy, os # import packages;
 #pop=os.environ["POP"];
 par=os.environ["PAR"];
 type=os.environ["TYPE"];
 niter=os.environ["ITER"] # import bash variable $ITER;
-gy.GYARADOS_PAR(type=type, par=par, niter=niter)'
+mode=os.environ["MODE"];
+psmc_patterns=os.environ["PSMC_PATTERNS"];
+psmc_s=os.environ["PSMC_S"];
+gy.GYARADOS_PAR(type=type, par=par, niter=niter, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s)'
 
 fi
 
@@ -382,6 +424,9 @@ mu=$MU
 gr=$GR
 events=$EVENTS
 NM=$NM
+mode=$MODE
+psmc_patterns=$PSMC_PATTERNS
+psmc_s=$PSMC_S
 "
 
 
@@ -400,6 +445,9 @@ export MU
 export GR
 export EVENTS
 export NM
+export mode
+export psmc_patterns
+export psmc_s
 
 
 ## run the model 
@@ -431,7 +479,10 @@ mu=os.environ["MU"] # import bash variable $MU;
 gr=os.environ["GR"] # import bash $GR;
 e=os.environ["EVENTS"] # import bash $EVENTS;
 NM=os.environ["NM"] # import bash $NM;
-gy.GYARADOS_PAR(type=type,L=L, N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,mig=mig,p=pop,mu=mu,rho=1e-8, evs=e, gr=gr,M=NM) # run'
+mode=os.environ["mode"];
+psmc_patterns=os.environ["psmc_patterns"];
+psmc_s=os.environ["psmc_s"];
+gy.GYARADOS_PAR(type=type,L=L, N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,mig=mig,p=pop,mu=mu,rho=1e-8, evs=e, gr=gr,M=NM, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s) # run'
 
 
 fi

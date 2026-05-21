@@ -27,6 +27,7 @@ import random as ra
 import string
 import re
 import multiprocessing
+import shlex
 
 
 ### add snif path
@@ -70,6 +71,55 @@ log_vector_sst=log_vector
 #log_vector=gy.logspace(100000000+1,50, 40000)
 #lin_vector=np.linspace(50,450000, num=2000)
 #log_vector=gy.logspace(450000+1,20, 600) ## NISHA LOG VECTOR
+
+DEFAULT_GYARADOS_MODE = "iicr,simulate,stats,psmc"
+DEFAULT_PSMC_PATTERN = "4+25*2+4+6"
+DEFAULT_PSMC_S = 100
+
+MODE_ATOMS = {"iicr", "simulate", "stats", "psmc", "smcpp"}
+
+
+def parse_run_modes(mode=None):
+    """Normalize comma-separated run modes into executable pipeline steps."""
+    if mode is None or str(mode).strip() == "":
+        mode = DEFAULT_GYARADOS_MODE
+    requested = [m.strip().lower() for m in str(mode).split(",") if m.strip()]
+    steps = set()
+    for item in requested:
+        if item == "none":
+            continue
+        elif item in MODE_ATOMS:
+            steps.add(item)
+        else:
+            valid = sorted(MODE_ATOMS | {"none"})
+            raise ValueError("Unknown mode '%s'. Valid modes: %s" % (item, ", ".join(valid)))
+    return steps
+
+
+def parse_psmc_patterns(psmc_patterns=None):
+    """Return one or more PSMC -p time vectors."""
+    if psmc_patterns is None or str(psmc_patterns).strip() == "":
+        return [DEFAULT_PSMC_PATTERN]
+    if isinstance(psmc_patterns, (list, tuple)):
+        raw_patterns = psmc_patterns
+    else:
+        raw_patterns = re.split(r"[;,]", str(psmc_patterns))
+    patterns = [str(p).strip().strip('"').strip("'") for p in raw_patterns if str(p).strip()]
+    return patterns or [DEFAULT_PSMC_PATTERN]
+
+
+def psmc_pattern_label(psmc_pattern):
+    label = re.sub(r"[^A-Za-z0-9]+", "_", str(psmc_pattern)).strip("_")
+    return label or "default"
+
+
+def psmc_pattern_suffix(psmc_pattern):
+    return "_p" + psmc_pattern_label(psmc_pattern)
+
+
+def psmc_output_prefix(it, s, p, individual, psmc_pattern=DEFAULT_PSMC_PATTERN):
+    suffix = psmc_pattern_suffix(psmc_pattern)
+    return it.fullname+"_s"+str(s)+"_deme_"+str(p)+"_ind_"+str(individual)+suffix
 
 #####################################################################################################################################################
 ######################################                      CLASS MODEL                  ############################################################
@@ -1067,13 +1117,19 @@ def run_1d_free_model(N, d, m):
 #################################               MODEL RUN FUNCTION                        ##############################
 ########################################################################################################################
 
-def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, par=None,M=None, Nt=None):
+def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, par=None,M=None, Nt=None, mode=DEFAULT_GYARADOS_MODE, psmc_patterns=None, psmc_s=DEFAULT_PSMC_S):
     
     """
     Runs all the eq_sim_n_islands model  in parallel. 
     Calls for slurm job
     """
     print("Welcome to gyarados! Version 16.11.2023")
+    run_modes = gy.parse_run_modes(mode)
+    psmc_patterns = ",".join(gy.parse_psmc_patterns(psmc_patterns))
+    psmc_s = str(psmc_s)
+    print("Run modes:", ",".join(sorted(run_modes)) if run_modes else "none")
+    print("PSMC -p vectors:", psmc_patterns)
+    print("PSMC -s:", psmc_s)
     os.system("mkdir -p RESULTS") # create results directory if it doesn't exist yet
 
     # TIME LOG FILE
@@ -1196,51 +1252,61 @@ def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,
     print("A total number of: ", str(niter)," iterations")
 
     ### Calculate IICR
-    print("Calculating IICR...")
-    if int(type)==4:
-        print("Stepping stone model IICR calculation...")
-        print("One IICR per each sampled population")
-        print("Sampled demes are:", sampled_demes)
-        for p in sampled_demes:
-            print("Starting IICR with population ", p)
-            #gy.IICR_fullrun(r,int(p))
-            sentence="rm -r "+r.name+"/*fn*fs*"
-            os.system(sentence)
-    #elif int(type)==3: ## FREE MODEL
-    #    for p in range(1,int(r.islands)+1):
-    #        print("Calculating IICR")
-    #        gy.IICR_fullrun(r,int(p))
-    elif int(type)==3: ### FREE p
-        print("Calculating IICR with", p)
-        gy.IICR_fullrun(r,int(p))
+    if "iicr" in run_modes:
+        print("Calculating IICR...")
+        if int(type)==4:
+            print("Stepping stone model IICR calculation...")
+            print("One IICR per each sampled population")
+            print("Sampled demes are:", sampled_demes)
+            for p in sampled_demes:
+                print("Starting IICR with population ", p)
+                #gy.IICR_fullrun(r,int(p))
+                sentence="rm -r "+r.name+"/*fn*fs*"
+                os.system(sentence)
+        #elif int(type)==3: ## FREE MODEL
+        #    for p in range(1,int(r.islands)+1):
+        #        print("Calculating IICR")
+        #        gy.IICR_fullrun(r,int(p))
+        elif int(type)==3: ### FREE p
+            print("Calculating IICR with", p)
+            gy.IICR_fullrun(r,int(p))
 
+        else:
+            print("Calculating IICR")
+            gy.IICR_fullrun(r,int(p))
+        sentence="rm -r "+r.name+"/*fn*fs*"
+        os.system(sentence)
     else:
-        print("Calculating IICR")
-        gy.IICR_fullrun(r,int(p))
-    sentence="rm -r "+r.name+"/*fn*fs*"
-    os.system(sentence)
+        print("Skipping IICR because mode is", mode)
 #########################################################################################
 
             ###################### AQUI 
 
-    for i in range(1,int(niter)+1):
-        if r.mtype!="panmictic":
-            if int(r.Nt)<=20000:
-                sentence="sbatch gyarados_lowmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p) 
-            elif int(r.Nt)<=120000:
-                sentence="sbatch gyarados_midmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p) 
-            else:
-                sentence="sbatch gyarados_highmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p) 
-        else: 
-            sentence="sbatch gyarados_midmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p)
-        os.system(sentence)
-        print(sentence)
+    worker_modes = run_modes.intersection({"simulate", "stats", "psmc", "smcpp"})
+    if worker_modes:
+        quoted_mode = shlex.quote(str(mode))
+        quoted_psmc_s = shlex.quote(str(psmc_s))
+        quoted_psmc_patterns = shlex.quote(str(psmc_patterns))
+        for i in range(1,int(niter)+1):
+            if r.mtype!="panmictic":
+                if int(r.Nt)<=20000:
+                    sentence="sbatch gyarados_lowmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+quoted_mode+" "+quoted_psmc_s+" "+quoted_psmc_patterns
+                elif int(r.Nt)<=120000:
+                    sentence="sbatch gyarados_midmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+quoted_mode+" "+quoted_psmc_s+" "+quoted_psmc_patterns
+                else:
+                    sentence="sbatch gyarados_highmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+quoted_mode+" "+quoted_psmc_s+" "+quoted_psmc_patterns
+            else: 
+                sentence="sbatch gyarados_midmem_work.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+quoted_mode+" "+quoted_psmc_s+" "+quoted_psmc_patterns
+            os.system(sentence)
+            print(sentence)
+    else:
+        print("No repetition jobs submitted because mode is", mode)
     
      
     return r
 
 
-def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only_transition_matrix=False):
+def GYARADOS_WORK(i, j_name, p, mode=DEFAULT_GYARADOS_MODE, psmc_s=DEFAULT_PSMC_S, psmc_patterns=None, lightmem=False, full_VCF=False, tmrca=True, only_transition_matrix=False):
     '''
     Worker for n_islands. Runs all analyses for one repetition
     - i: repetition id
@@ -1249,6 +1315,11 @@ def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only
     '''
     ########os.system(bash work.sh i json p)
     start_time = time.time()
+    run_modes = gy.parse_run_modes(mode)
+    psmc_patterns = gy.parse_psmc_patterns(psmc_patterns)
+    print("Worker modes:", ",".join(sorted(run_modes)) if run_modes else "none")
+    print("Worker PSMC -p vectors:", ",".join(psmc_patterns))
+    print("Worker PSMC -s:", psmc_s)
     
 
     d=gy.get_from_json(j_name) # get the model in a dict
@@ -1281,7 +1352,7 @@ def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only
         print("Starting repetition", it.name)
         print("WE start with deme", deme)
         # 1. Copy par file adding the ID of the repetition
-        if deme==sampling_demes[0]:
+        if "simulate" in run_modes and deme==sampling_demes[0]:
             ######### SKIP THE FSC2 part
             fsc_part=True
             if fsc_part:#
@@ -1316,7 +1387,7 @@ def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only
                 print(sentence)
                 os.system(sentence)
         else:
-            print("FSC2 is already done!")
+            print("Skipping FSC2 simulation for this deme or mode.")
         print("WE CONTINUE with deme", deme, "and")
 
         # 3. Get FSC2 stats from SFS
@@ -1326,17 +1397,10 @@ def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only
             raise SystemExit("Stopping here before starting with inference with PSMC and stuff bc only transition matrix")
         else:
             print("only_transition_matrix is", only_transition_matrix)
-        # If i want to save ram memory then
-        #if lightmem:
-            # Check if gen table is too big
-        #    itsbig=gy.FSC2_is_gen_big(it.gen_path)
-        #    if itsbig:
-        #        full_gen_path=gy.FSC2_awk_filter(it.gen_path,p)
-        #else: 
-        #    print("Gen table is not very big")
-                
-        #return
-###### AQUI
+        if "stats" not in run_modes:
+            print("Skipping sequence summary statistics because mode is", mode)
+            gen = None
+        else:
             print("READING GEN FILE")
             gen=gy.FSC2_read_gen(it.gen_path)
             gen_save=True
@@ -1361,7 +1425,7 @@ def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only
                         return
                         sentence="rm -rf "+it.dir
                         os.system(sentence)
-                        gy.GYARADOS_WORK(i,j_name,deme) # call again
+                        gy.GYARADOS_WORK(i,j_name,deme,mode=mode,psmc_s=psmc_s,psmc_patterns=",".join(psmc_patterns)) # call again
                     else:
                                 
                         # Continue
@@ -1414,30 +1478,17 @@ def GYARADOS_WORK(i, j_name, p, lightmem=False, full_VCF=False, tmrca=True, only
 
             if full_VCF:
                 gy.FSC2_gen2fullVCF(gen,it)
-        
-            # 5. Run STAIRWAY PLOT
 
-            print("Running STAIRWAY PLOT...",i)
-            print("running STAIRWAY PLOT with deme", deme)
-            #gy.STW_call(i,j_name,deme) # parallel call
-
-            # 3. Run SMC++
+        if "smcpp" in run_modes:
             print("Running SMC++ with deme", deme)
             print("Running SMC++ PLOT...",i)
-            #gy.SMC_call(i,j_name,deme) # parallel call
+            gy.SMC_call(i,j_name,deme) # parallel call
 
-            
-            # 4. Run PSMC and SNIF inferention
+        if "psmc" in run_modes:
             print("Running PSMC with deme", deme)
-            print("Running PSMC and SNIF...",i)
-            gy.PSMC_SNIF_call(i,j_name,deme) # parallel call
-
-
-        # REMOVE ALL
-        #sentence="rm -rf "+r.name+"/"
-        #print("Removing all...")
-        #print(sentence)
-        #os.system(sentence)
+            print("Running PSMC...",i)
+            for psmc_pattern in psmc_patterns:
+                gy.PSMC_SNIF_call(i,j_name,deme,s=psmc_s,psmc_pattern=psmc_pattern) # parallel call
 
 def GYARADOS_IICR(type, test=False,N=None,sizes=None,sample=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, chr=5, par=None,M=None):
     
@@ -2471,20 +2522,20 @@ def STW_sample(final_summary_stw, r, it, save_tmp=False, scheme="log"):
 #########################################################                PSMC FUNCTIONS                     ##################################################
 ##############################################################################################################################################################
 
-def PSMC_SNIF_call(i,j_name,p,s=100):
+def PSMC_SNIF_call(i,j_name,p,s=DEFAULT_PSMC_S,psmc_pattern=DEFAULT_PSMC_PATTERN):
     '''
     Call SNIF and PSMC inferention
     '''
-    sentence="sbatch call_psmc_snif_gy.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+str(s)
+    sentence="sbatch call_psmc_snif_gy.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+str(s)+" "+shlex.quote(str(psmc_pattern))
     #sentence="bash call_psmc_snif_gy.sh "+ str(i) +" "+str(j_name)+" "+str(p)+" "+str(s)
     os.system(sentence)
 
 
-def PSMC_estimate_sample_per_individual(individual,svalue, it, r, gen, p):
+def PSMC_estimate_sample_per_individual(individual,svalue, it, r, gen, p, psmc_pattern=DEFAULT_PSMC_PATTERN):
 
     print("Running gy.PSMC_consensus_fa")
-    consensus=gy.PSMC_consensus_fa(it,r,gen,p, individual) # TELL INDIVIDUAL ####### THIS
-    consensus_fq=gy.PSMC_convert_fastq(consensus,it, individual,p)  ############### THIS
+    consensus=gy.PSMC_consensus_fa(it,r,gen,p, individual, psmc_pattern=psmc_pattern) # TELL INDIVIDUAL ####### THIS
+    consensus_fq=gy.PSMC_convert_fastq(consensus,it, individual,p, psmc_pattern=psmc_pattern)  ############### THIS
     ### UP TO THIS POINT
     print("svalue: %s" % svalue)
     # run for each bin size. If two_bin_sizes==False, only run once as ussually
@@ -2493,9 +2544,8 @@ def PSMC_estimate_sample_per_individual(individual,svalue, it, r, gen, p):
     svalue=str(svalue)
     print("Run psmcfa")
    
-    psmcfa=gy.PSMC_convert_input(consensus_fq,it,individual,p,svalue)   ########### THIS
-    psmcfa=it.fullname+"_s"+str(svalue)+"_deme_"+str(p)+"_ind_"+str(individual)+".consensus.psmcfa"
-    psmc=gy.PSMC_run(psmcfa,it,r,individual,p,svalue)   ############ THIS
+    psmcfa=gy.PSMC_convert_input(consensus_fq,it,individual,p,svalue, psmc_pattern=psmc_pattern)   ########### THIS
+    psmc=gy.PSMC_run(psmcfa,it,r,individual,p,svalue,psmc_pattern=psmc_pattern)   ############ THIS
     # Remove intermediate files
     #sentence="rm "+consensus
     #os.system(sentence)
@@ -2504,13 +2554,13 @@ def PSMC_estimate_sample_per_individual(individual,svalue, it, r, gen, p):
     #sentence="rm "+psmcfa
     #os.system(sentence)
     #psmc=it.fullname+"_s"+svalue+".psmc"
-    lpsmc=gy.PSMC_last_iteration(it,r,individual,p,svalue) # get last iteration ########## THIS
+    lpsmc=gy.PSMC_last_iteration(it,r,individual,p,svalue,psmc_pattern=psmc_pattern) # get last iteration ########## THIS
     #lpsmc=it.fullname+"_s100_deme_1_ind_"+str(individual)+".lpsmc"
     print("I got a PSMC for %s bin size in individual" % str(svalue))
     this_sample_dict=gy.PSMC_sample(psmc=lpsmc,svalue=svalue,mu=float(r.mu))   ######## THIS
     return(this_sample_dict)
 
-def PSMC_SNIF_fullrun(j_name,i,p,s, two_bin_sizes=False,study_bin_size=False):
+def PSMC_SNIF_fullrun(j_name,i,p,s=DEFAULT_PSMC_S, psmc_pattern=DEFAULT_PSMC_PATTERN, two_bin_sizes=False,study_bin_size=False):
 
     '''
     Run all the PSMC and SNIF inferention considering another job
@@ -2546,6 +2596,8 @@ def PSMC_SNIF_fullrun(j_name,i,p,s, two_bin_sizes=False,study_bin_size=False):
     gen=gy.FSC2_read_gen(it.gen_path)   
     
     print("Calling PSMC...",i)
+    psmc_patterns = gy.parse_psmc_patterns(psmc_pattern)
+    print("PSMC -p vectors:", ",".join(psmc_patterns))
     ## Do each individual
     individuals = int(r.samples[int(p)-1]/2)
     print("Number of individuals sampled %s" % individuals)
@@ -2564,16 +2616,18 @@ def PSMC_SNIF_fullrun(j_name,i,p,s, two_bin_sizes=False,study_bin_size=False):
     print("There are %d bin sizes:" % len(svalues))
     print(*svalues)
 
-    for svalue in svalues:
-        results=[]
-        #pool = multiprocessing.Pool(processes=individuals) # as many processes as individuals
-        for individual in range(1,individuals+1):
-            results.append(PSMC_estimate_sample_per_individual(individual,svalue,it, r, gen , p ))
+    for current_psmc_pattern in psmc_patterns:
+        print("Running PSMC vector:", current_psmc_pattern)
+        for svalue in svalues:
+            results=[]
+            #pool = multiprocessing.Pool(processes=individuals) # as many processes as individuals
+            for individual in range(1,individuals+1):
+                results.append(PSMC_estimate_sample_per_individual(individual,svalue,it, r, gen , p, psmc_pattern=current_psmc_pattern ))
 
-        sample_dicts = results
-        print("Now we have %d entries (individuals) in the dict list" % len(sample_dicts))
-        # Call mean and write
-        gy.PSMC_mean_inferences(sample_dicts=sample_dicts, svalue=svalue,r=r,it=it,p=p) #### THIS
+            sample_dicts = results
+            print("Now we have %d entries (individuals) in the dict list" % len(sample_dicts))
+            # Call mean and write
+            gy.PSMC_mean_inferences(sample_dicts=sample_dicts, svalue=svalue,r=r,it=it,p=p,psmc_pattern=current_psmc_pattern) #### THIS
     
     #del pool 
     #del sample_dicts
@@ -2953,8 +3007,9 @@ def PSMC_sample(psmc,svalue, mu, scheme="log"):
     return sample_dict
 
 
-def PSMC_mean_inferences(sample_dicts, svalue,r, it, save_tmp=True, p=None):
+def PSMC_mean_inferences(sample_dicts, svalue,r, it, save_tmp=True, p=None, psmc_pattern=DEFAULT_PSMC_PATTERN):
     svalue=str(svalue)
+    pattern_suffix = gy.psmc_pattern_suffix(psmc_pattern)
     print("Calculating mean of psmc inferences for model ", r.id)
     #os.system("touch "+str(r.id)+"_rep"+str(it.rep)+".txt")
     log_sampled=[]
@@ -2978,7 +3033,7 @@ def PSMC_mean_inferences(sample_dicts, svalue,r, it, save_tmp=True, p=None):
         mean_log_psmc=np.mean(log_sampled, axis=0)
         # write in file if it doesn't exist
         
-        tyop="gyarados_"+r.mtype+"_s"+str(svalue)+"_psmc.log.out"
+        tyop="gyarados_"+r.mtype+"_s"+str(svalue)+pattern_suffix+"_psmc.log.out"
         if (os.path.exists("RESULTS/"+tyop) == False):
             o = open("RESULTS/"+tyop, "w")
             params=["#"+par for par in r.params]
@@ -3032,7 +3087,7 @@ def PSMC_mean_inferences(sample_dicts, svalue,r, it, save_tmp=True, p=None):
         mean_lin_psmc=np.mean(lin_sampled, axis=0)
         # write in file if it doesn't exist
 
-        tyop="gyarados_"+r.mtype+"_s"+str(svalue)+"_psmc.lin.out"
+        tyop="gyarados_"+r.mtype+"_s"+str(svalue)+pattern_suffix+"_psmc.lin.out"
         if (os.path.exists("RESULTS/"+tyop) == False):
             o = open("RESULTS/"+tyop, "w")
             params=["#"+par for par in r.params]
@@ -3081,7 +3136,7 @@ def PSMC_mean_inferences(sample_dicts, svalue,r, it, save_tmp=True, p=None):
             line="\t".join(listofill)+"\n"
             linf.write(line)
 
-def PSMC_consensus_fa(it,r,gen,p,individual):
+def PSMC_consensus_fa(it,r,gen,p,individual,psmc_pattern=DEFAULT_PSMC_PATTERN):
     '''
     - it: Mk repetition model object
     - r: MK model object
@@ -3093,7 +3148,8 @@ def PSMC_consensus_fa(it,r,gen,p,individual):
     '''
     print("Entering PSMC_consensus_fa")
     co=[]
-    consensus=it.fullname+"_deme_"+str(p)+"_ind_"+str(individual)+".consensus.fa"
+    pattern_suffix = gy.psmc_pattern_suffix(psmc_pattern)
+    consensus=it.fullname+"_deme_"+str(p)+"_ind_"+str(individual)+pattern_suffix+".consensus.fa"
     
     #Doing it for all the individuals sampled
 
@@ -3123,7 +3179,7 @@ def PSMC_consensus_fa(it,r,gen,p,individual):
                 #sentence="rm -rf "+it.dir
                 #gy.EQ_SIM_NISLANDS_WORK(it.rep, r.json, p) # call all again
                 # and cancel all the jobs related 
-        consensus_tmp=it.fullname+"_"+str(chr)+"_deme_"+str(p)+"_ind_"+str(individual)+".consensus.fatmp" # we edit this
+        consensus_tmp=it.fullname+"_"+str(chr)+"_deme_"+str(p)+"_ind_"+str(individual)+pattern_suffix+".consensus.fatmp" # we edit this
         shutil.copyfile(tmp_fa, consensus_tmp) # copy it in its corresponding path
         f=os.open(consensus_tmp,os.O_RDWR) # open consensus.fa file
         m=mmap.mmap(f,0) # map the file. m is an mmap object
@@ -3167,7 +3223,7 @@ def PSMC_consensus_fa(it,r,gen,p,individual):
         print("More than one chromosome")
         # Paste them 
         # Past all the consensus.fatmp in a single consensus fa
-        sentence="cat "+it.fullname+"_*"+"_deme_"+str(p)+"_ind_"+str(individual)+".consensus.fatmp | fold -b60 > "+consensus ###########################
+        sentence="cat "+it.fullname+"_*"+"_deme_"+str(p)+"_ind_"+str(individual)+pattern_suffix+".consensus.fatmp | fold -b60 > "+consensus ###########################
         os.system(sentence)  
         print(sentence)
     
@@ -3231,30 +3287,32 @@ def PSMC_consensus_fa2(it,r,gen,p):
     return consensus
 
 
-def PSMC_convert_fastq(consensus,it,individual,p):
+def PSMC_convert_fastq(consensus,it,individual,p,psmc_pattern=DEFAULT_PSMC_PATTERN):
     '''
     Convert the consensus .fa into a fastq.gz
     '''
     #it.fullname+"_ind_"+str(individual)+".consensus.fa"
-    consensus_fq=it.fullname+"_deme_"+str(p)+"_ind_"+str(individual)+".consensus.fq.gz"
+    pattern_suffix = gy.psmc_pattern_suffix(psmc_pattern)
+    consensus_fq=it.fullname+"_deme_"+str(p)+"_ind_"+str(individual)+pattern_suffix+".consensus.fq.gz"
     sentence="cat "+consensus+" | seqtk seq -F 'I' | gzip > "+consensus_fq
     os.system(sentence)
     print(consensus_fq+" created")
 
     return consensus_fq
 
-def PSMC_convert_input(consensus_fq,it, individual,p,s=100):
+def PSMC_convert_input(consensus_fq,it, individual,p,s=100,psmc_pattern=DEFAULT_PSMC_PATTERN):
     '''
     Get proper psmc input
     '''
     s=str(s)
-    psmcfa=it.fullname+"_s"+s+"_deme_"+str(p)+"_ind_"+str(individual)+".consensus.psmcfa"
+    pattern_suffix = gy.psmc_pattern_suffix(psmc_pattern)
+    psmcfa=it.fullname+"_s"+s+"_deme_"+str(p)+"_ind_"+str(individual)+pattern_suffix+".consensus.psmcfa"
     sentence="fq2psmcfa -q0 -s "+str(s)+" "+consensus_fq+" > "+psmcfa
     os.system(sentence)
     print(psmcfa+" created")
     return psmcfa
 
-def PSMC_last_iteration(it,r,individual,p,s=100):
+def PSMC_last_iteration(it,r,individual,p,s=100,psmc_pattern=DEFAULT_PSMC_PATTERN):
 
     '''
     Reads psmc output file (name.psmc) and extracts only the last iteration
@@ -3262,39 +3320,40 @@ def PSMC_last_iteration(it,r,individual,p,s=100):
     Returns name.lpsmc path
     '''
     s=str(s)
-    with open(it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc') as n:
+    output_prefix = gy.psmc_output_prefix(it, s, p, individual, psmc_pattern)
+    with open(output_prefix+'.psmc') as n:
         last=n.read().split("//")[-2] # last iteration: pre last file
-    with open(it.fullname+"_s"+s+"_deme_"+str(p)+"_ind_"+str(individual)+".lpsmc", "w") as l:
+    with open(output_prefix+".lpsmc", "w") as l:
         l.write(last)
-    print(it.fullname+"_s"+s+".lpsmc has been created")
-    sentence="tail -n3 "+it.fullname+"_s"+s+"_deme_"+str(p)+"_ind_"+str(individual)+".lpsmc"
+    print(output_prefix+".lpsmc has been created")
+    sentence="tail -n3 "+output_prefix+".lpsmc"
     os.system(sentence)
     # Copy to results
-    sentence="cp "+it.fullname+"_s"+s+"_deme_"+str(p)+"_ind_"+str(individual)+".lpsmc RESULTS/"+r.name+"/"
+    sentence="cp "+output_prefix+".lpsmc RESULTS/"+r.name+"/"
     print(sentence)
     os.system(sentence)
-    return it.fullname+"_s"+s+"_deme_"+str(p)+"_ind_"+str(individual)+".lpsmc"
+    return output_prefix+".lpsmc"
 
 
-def PSMC_run(psmcfa,it,r,individual,p,s=100, onerep=True):
+def PSMC_run(psmcfa,it,r,individual,p,s=100, onerep=True, psmc_pattern=DEFAULT_PSMC_PATTERN):
     print("Removing consensus fa and all intermediate files")
     if onerep:
-        print("Removing .fa bc im doing only one rep") 
-        sentence="rm "+r.name+"/*fa"
-        os.system(sentence)
-    sentence="rm "+it.fullname+"*.fatmp" 
+        print("Keeping model reference .fa files for other individuals and PSMC vectors")
+    pattern_suffix = gy.psmc_pattern_suffix(psmc_pattern)
+    sentence="rm "+it.fullname+"*"+pattern_suffix+".consensus.fatmp" 
     os.system(sentence)
-    sentence="rm "+it.fullname+"*.fa" 
+    sentence="rm "+it.fullname+"*"+pattern_suffix+".consensus.fa" 
     os.system(sentence)
     s=str(s)
     start_time = time.time()
-    sentence='psmc -t15 -r1 -p "4+25*2+4+6" -d -o '+it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc '+psmcfa # conventional
+    output_prefix = gy.psmc_output_prefix(it, s, p, individual, psmc_pattern)
+    sentence='psmc -t15 -r1 -p '+shlex.quote(str(psmc_pattern))+' -d -o '+output_prefix+'.psmc '+psmcfa # conventional
     #sentence='psmc -t15 -r1 -p "27*2+4+6" -o '+it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc '+psmcfa # Times1
     #sentence='psmc -t15 -r1 -p "2*2+2*2+25*2+1*4+1*6" -o '+it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc '+psmcfa # Times2
     #sentence='psmc -t15 -r1 -p "16*1+19*2+1*4+1*6" -o '+it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc '+psmcfa #Times2
     # sentence='psmc -t40 -r1 -p "4+25*2+4+6" -o '+it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc '+psmcfa # conventional #nisha
     os.system(sentence)
-    psmc=it.fullname+'_s'+s+'_deme_'+str(p)+'_ind_'+str(individual)+'.psmc'
+    psmc=output_prefix+'.psmc'
     # Copy to results
     sentence="cp "+psmc+" RESULTS/"+r.name+"/"
     print(sentence)
@@ -3305,13 +3364,13 @@ def PSMC_run(psmcfa,it,r,individual,p,s=100, onerep=True):
     finish_time=time.time()
     
     runtime=round(finish_time-start_time,2)
-    sentence="rm "+it.fullname+"*consensus*" 
+    sentence="rm "+it.fullname+"*"+pattern_suffix+".consensus*" 
     os.system(sentence)
 
     with open("gyarados_time_check.log","a") as f:
-        print(r.name,"PSMC",str(runtime),str(s)+"/"+str(individual), sep="\t", file=f)
+        print(r.name,"PSMC",str(runtime),str(s)+"/"+str(individual)+"/"+gy.psmc_pattern_label(psmc_pattern), sep="\t", file=f)
     print("Remove psmcfa")
-    sentence="rm "+it.fullname+"*.fa"  
+    sentence="rm "+psmcfa  
     os.system(sentence)
 
     return psmc

@@ -21,11 +21,17 @@ module load devel/python/Python-3.7.9
 i=$1
 j_name=$2
 p=$3
+mode=${4:-iicr,simulate,stats,psmc}
+psmc_s=${5:-100}
+psmc_patterns=${6:-4+25*2+4+6}
 
 ### Export
 export i
 export j_name
 export p
+export mode
+export psmc_s
+export psmc_patterns
 
 ### Call
 
@@ -33,6 +39,9 @@ python -c 'import gyarados as gy, os  # gyarados ;
 i=os.environ["i"];
 j_name=os.environ["j_name"];
 p=os.environ["p"];
-gy.GYARADOS_WORK(i, j_name, p)'
+mode=os.environ["mode"];
+psmc_s=os.environ["psmc_s"];
+psmc_patterns=os.environ["psmc_patterns"];
+gy.GYARADOS_WORK(i, j_name, p, mode=mode, psmc_s=psmc_s, psmc_patterns=psmc_patterns)'
 
 echo "Called for repetition $i in population $p"

@@ -27,12 +27,14 @@ i=$1
 j_name=$2
 p=$3
 s=$4
+psmc_pattern=${5:-4+25*2+4+6}
 
 ### Export
 export i
 export j_name
 export p
 export s
+export psmc_pattern
 
 ### Call
 
@@ -41,7 +43,7 @@ i=os.environ["i"];
 j_name=os.environ["j_name"];
 p=os.environ["p"];
 s=os.environ["s"];
-gy.PSMC_SNIF_fullrun(j_name,i,p,s)'
+psmc_pattern=os.environ["psmc_pattern"];
+gy.PSMC_SNIF_fullrun(j_name,i,p,s,psmc_pattern=psmc_pattern)'
 
 echo "Called for repetition ${i}"
-

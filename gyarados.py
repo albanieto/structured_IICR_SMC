@@ -63,7 +63,7 @@ def logspace(limit,start, n):
 
 lin_vector=np.linspace(50,100000, num=2000)
 log_vector=gy.logspace(100000+1,50, 400)
-log_vector=gy.logspace(5000000+1,50, 500)
+log_vector=gy.logspace(5000000+1,50, 200)
 log_vector_sst=gy.logspace(100000+1,50, 400)
 log_vector_in=gy.logspace(50000+1,50, 200)
 log_vector_in=log_vector

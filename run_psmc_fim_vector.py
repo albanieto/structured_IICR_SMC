@@ -51,7 +51,7 @@ def main():
         description="Submit StSi island models with a configurable PSMC -p time vector."
     )
     parser.add_argument("--d-vector", default="50", help="Comma-separated deme counts.")
-    parser.add_argument("--n-vector", default="2000", help="Comma-separated haploid deme sizes.")
+    parser.add_argument("--n-vector", default="1400", help="Comma-separated haploid deme sizes.")
     parser.add_argument("--m-vector", default="5", help="Comma-separated M values.")
     parser.add_argument("--samples", default=20, type=int, help="Haploid samples per model.")
     parser.add_argument("--sizes", default="100000000", help="Chromosome sizes passed to -b.")

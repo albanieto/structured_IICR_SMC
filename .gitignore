@@ -1,0 +1,10 @@
+# Ignore folders anywhere in the repo whose names start with these prefixes
+StSi*/
+pan*/
+SST*/
+1D*/
+RESULTS*/
+
+# Ignore output/error files
+*.out
+*.err

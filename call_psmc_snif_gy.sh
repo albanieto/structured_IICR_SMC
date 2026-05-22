@@ -2,6 +2,7 @@
 #SBATCH -p workq
 #SBATCH --output=R-%x.%j.out
 #SBATCH --mem=5000
+#SBATCH -t 2-00:00:00
 
 ### MODULES
 

@@ -8,3 +8,4 @@ RESULTS*/
 # Ignore output/error files
 *.out
 *.err
+*.log

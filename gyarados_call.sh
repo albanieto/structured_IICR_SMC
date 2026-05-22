@@ -289,6 +289,9 @@ psmc_patterns=$PSMC_PATTERNS
 psmc_s=$PSMC_S
 "
 
+mode=$MODE
+psmc_patterns=$PSMC_PATTERNS
+psmc_s=$PSMC_S
 
 ## EXPORT
 
@@ -429,6 +432,9 @@ psmc_patterns=$PSMC_PATTERNS
 psmc_s=$PSMC_S
 "
 
+mode=$MODE
+psmc_patterns=$PSMC_PATTERNS
+psmc_s=$PSMC_S
 
 ## EXPORT
 

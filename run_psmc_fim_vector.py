@@ -22,11 +22,15 @@ def calc_m(M, N=1000, d=20):
     return "{:.4E}".format(M / ((d - 1) * 2 * N))
 
 
+def str_bool(value):
+    return "true" if value else "false"
+
+
 def build_command(args, d, N, M):
     m = calc_m(M, N, d)
     Nt = N * d
     patterns = args.psmc_patterns or DEFAULT_PSMC_PATTERNS
-    return [
+    cmd = [
         "sbatch", "gyarados_call.sh",
         "-n", str(d),
         "-N", str(N),
@@ -44,6 +48,9 @@ def build_command(args, d, N, M):
         "--psmc-s", str(args.psmc_s),
         "--psmc-patterns", ",".join(patterns),
     ]
+    if args.ditto:
+        cmd.extend(["--ditto", str_bool(args.ditto)])
+    return cmd
 
 
 def main():
@@ -62,7 +69,12 @@ def main():
     parser.add_argument(
         "--mode",
         default="iicr,simulate,stats,psmc",
-        help="Comma-separated steps: iicr,simulate,stats,psmc,smcpp or none.",
+        help="Comma-separated steps: iicr,simulate,stats,psmc,smcpp,transition_matrix or none.",
+    )
+    parser.add_argument(
+        "--ditto",
+        action="store_true",
+        help="Also build and run the Ditto panmictic mimic from the simulated IICR.",
     )
     parser.add_argument("--psmc-s", default=100, type=int, help="fq2psmcfa -s value.")
     parser.add_argument(

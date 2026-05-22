@@ -1,19 +1,22 @@
 #!/bin/bash
 
-# Example FIM/StSi run:
+# Example FIM/StSi + Ditto run:
 # d = 50 demes
-# M = 5
+# M = 1
 # N = 1400 haploids per deme
 # Nt = d * N = 70000
 #
-# Runs: IICRsim + fastsimcoal2 simulation + summary statistics + PSMC.
-# Set DITTO=true below to also run the panmictic Ditto mimic.
+# Runs in the original structured model:
+#   IICRsim + fastsimcoal2 simulation + summary statistics + SMC++
+#
+# Also builds the Ditto panmictic mimic from the simulated IICR and runs:
+#   IICRsim + fastsimcoal2 simulation + summary statistics + SMC++
 
 set -euo pipefail
 
 D=50
 N=1400
-M=5
+M=1
 NT=70000
 SAMPLES=20
 ITERATIONS=1
@@ -21,12 +24,9 @@ POP=1
 SIZES=100000000
 CHROMOSOMES=5
 MU=1e-8
-PSMC_S=100
-PSMC_PATTERN='4+25*2+4+6'
-MODE='iicr,simulate,stats,psmc'
-DITTO=false
+MODE='iicr,simulate,stats,smcpp'
 
-CMD=(python run_psmc_fim_vector.py \
+python run_psmc_fim_vector.py \
   --d-vector "${D}" \
   --n-vector "${N}" \
   --m-vector "${M}" \
@@ -37,11 +37,4 @@ CMD=(python run_psmc_fim_vector.py \
   --population "${POP}" \
   --mu "${MU}" \
   --mode "${MODE}" \
-  --psmc-s "${PSMC_S}" \
-  --psmc-pattern "${PSMC_PATTERN}")
-
-if [ "${DITTO}" = true ]; then
-  CMD+=(--ditto)
-fi
-
-"${CMD[@]}"
+  --ditto

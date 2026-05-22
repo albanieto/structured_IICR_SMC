@@ -17,7 +17,7 @@ def calc_m(M, N=1000, d=20):
     m="{:.4E}".format(M/((d-1)*2*N))
     return m
 
-def call_gyarados(d, N, m, M, Nt, mode="iicr,simulate,stats,psmc", psmc_patterns="4+25*2+4+6", psmc_s=100, samples=2):
+def call_gyarados(d, N, m, M, Nt, mode="iicr,simulate,stats,psmc", psmc_patterns="4+25*2+4+6", psmc_s=100, samples=2, ditto=False):
     M=str(M)
     cmd=[
         "sbatch", "gyarados_call.sh",
@@ -37,6 +37,8 @@ def call_gyarados(d, N, m, M, Nt, mode="iicr,simulate,stats,psmc", psmc_patterns
         "--psmc-s", str(psmc_s),
         "--psmc-patterns", str(psmc_patterns),
     ]
+    if ditto:
+        cmd.extend(["--ditto", "true"])
     sentence=" ".join(cmd)
     print(d,N,m,M, Nt)
     print(sentence)
@@ -56,6 +58,7 @@ MODE="iicr,simulate,stats,psmc"
 PSMC_S=100
 PSMC_PATTERNS="4+25*2+4+6"
 SAMPLES=2
+DITTO=False
 if N_vector:
     for M in M_vector:
         for N in N_vector:
@@ -63,7 +66,7 @@ if N_vector:
                 m=calc_m(M, N, d)
                 print(m)
                 Nt=N*d
-                call_gyarados(d,N,m,M,Nt,mode=MODE,psmc_patterns=PSMC_PATTERNS,psmc_s=PSMC_S,samples=SAMPLES)
+                call_gyarados(d,N,m,M,Nt,mode=MODE,psmc_patterns=PSMC_PATTERNS,psmc_s=PSMC_S,samples=SAMPLES,ditto=DITTO)
 else:
     for M in M_vector:
         for Nt in N_tot:
@@ -75,4 +78,4 @@ else:
                     print("New N is", N)
                 m=calc_m(M, N, d)
                 print(m)
-                call_gyarados(d,N,m,M,Nt,mode=MODE,psmc_patterns=PSMC_PATTERNS,psmc_s=PSMC_S,samples=SAMPLES)
+                call_gyarados(d,N,m,M,Nt,mode=MODE,psmc_patterns=PSMC_PATTERNS,psmc_s=PSMC_S,samples=SAMPLES,ditto=DITTO)

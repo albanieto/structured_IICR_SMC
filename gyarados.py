@@ -28,6 +28,7 @@ import string
 import re
 import multiprocessing
 import shlex
+import ditto as gy_ditto
 
 
 ### add snif path
@@ -76,14 +77,20 @@ DEFAULT_GYARADOS_MODE = "iicr,simulate,stats,psmc"
 DEFAULT_PSMC_PATTERN = "4+25*2+4+6"
 DEFAULT_PSMC_S = 100
 
-MODE_ATOMS = {"iicr", "simulate", "stats", "psmc", "smcpp"}
+MODE_ATOMS = {"iicr", "simulate", "stats", "psmc", "smcpp", "transition_matrix"}
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
 
 
 def parse_run_modes(mode=None):
     """Normalize comma-separated run modes into executable pipeline steps."""
     if mode is None or str(mode).strip() == "":
         mode = DEFAULT_GYARADOS_MODE
-    requested = [m.strip().lower() for m in str(mode).split(",") if m.strip()]
+    requested = [m.strip().lower().replace("-", "_").replace(" ", "_") for m in str(mode).split(",") if m.strip()]
     steps = set()
     for item in requested:
         if item == "none":
@@ -1117,7 +1124,7 @@ def run_1d_free_model(N, d, m):
 #################################               MODEL RUN FUNCTION                        ##############################
 ########################################################################################################################
 
-def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, par=None,M=None, Nt=None, mode=DEFAULT_GYARADOS_MODE, psmc_patterns=None, psmc_s=DEFAULT_PSMC_S):
+def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, par=None,M=None, Nt=None, mode=DEFAULT_GYARADOS_MODE, psmc_patterns=None, psmc_s=DEFAULT_PSMC_S, ditto=False):
     
     """
     Runs all the eq_sim_n_islands model  in parallel. 
@@ -1127,9 +1134,11 @@ def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,
     run_modes = gy.parse_run_modes(mode)
     psmc_patterns = ",".join(gy.parse_psmc_patterns(psmc_patterns))
     psmc_s = str(psmc_s)
+    ditto = gy.parse_bool(ditto)
     print("Run modes:", ",".join(sorted(run_modes)) if run_modes else "none")
     print("PSMC -p vectors:", psmc_patterns)
     print("PSMC -s:", psmc_s)
+    print("Ditto:", ditto)
     os.system("mkdir -p RESULTS") # create results directory if it doesn't exist yet
 
     # TIME LOG FILE
@@ -1260,7 +1269,7 @@ def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,
             print("Sampled demes are:", sampled_demes)
             for p in sampled_demes:
                 print("Starting IICR with population ", p)
-                #gy.IICR_fullrun(r,int(p))
+                gy.IICR_fullrun(r,int(p))
                 sentence="rm -r "+r.name+"/*fn*fs*"
                 os.system(sentence)
         #elif int(type)==3: ## FREE MODEL
@@ -1282,7 +1291,18 @@ def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,
 
             ###################### AQUI 
 
-    worker_modes = run_modes.intersection({"simulate", "stats", "psmc", "smcpp"})
+    if ditto:
+        gy_ditto.run_ditto_for_model(
+            r,
+            p,
+            niter=niter,
+            mode=mode,
+            psmc_patterns=psmc_patterns,
+            psmc_s=psmc_s,
+            run_gyarados=gy.GYARADOS_PAR
+        )
+
+    worker_modes = run_modes.intersection({"simulate", "stats", "psmc", "smcpp", "transition_matrix"})
     if worker_modes:
         quoted_mode = shlex.quote(str(mode))
         quoted_psmc_s = shlex.quote(str(psmc_s))
@@ -1352,7 +1372,8 @@ def GYARADOS_WORK(i, j_name, p, mode=DEFAULT_GYARADOS_MODE, psmc_s=DEFAULT_PSMC_
         print("Starting repetition", it.name)
         print("WE start with deme", deme)
         # 1. Copy par file adding the ID of the repetition
-        if "simulate" in run_modes and deme==sampling_demes[0]:
+        needs_sequence_simulation = bool(run_modes.intersection({"simulate", "transition_matrix"}))
+        if needs_sequence_simulation and deme==sampling_demes[0]:
             ######### SKIP THE FSC2 part
             fsc_part=True
             if fsc_part:#
@@ -1393,8 +1414,12 @@ def GYARADOS_WORK(i, j_name, p, mode=DEFAULT_GYARADOS_MODE, psmc_s=DEFAULT_PSMC_
         # 3. Get FSC2 stats from SFS
 
         print("Getting stats...",deme)
-        if only_transition_matrix:
-            raise SystemExit("Stopping here before starting with inference with PSMC and stuff bc only transition matrix")
+        transition_matrix_only = only_transition_matrix or (
+            "transition_matrix" in run_modes and not run_modes.intersection({"stats", "psmc", "smcpp"})
+        )
+        if transition_matrix_only:
+            print("Transition matrix mode requested; sequence simulation output was generated/copied, stopping before stats/inference for this deme.")
+            continue
         else:
             print("only_transition_matrix is", only_transition_matrix)
         if "stats" not in run_modes:

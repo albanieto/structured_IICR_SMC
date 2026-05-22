@@ -41,16 +41,17 @@ help()
                 [-t | --type] Type of demographic model (1:eq_sim_nislands)
                 [-p | --population] Deme to sample
                 [-i | --iterations] Number of iterations
-                [-o | --mode] Comma-separated steps to run: iicr,simulate,stats,psmc,smcpp or none
+                [-o | --mode] Comma-separated steps to run: iicr,simulate,stats,psmc,smcpp,transition_matrix or none
                 [-q | --psmc-patterns] Comma-separated PSMC -p vectors
                 [-B | --psmc-s] fq2psmcfa -s bin size for PSMC
+                [-D | --ditto] true/false: also run a Ditto panmictic mimic from the simulated IICR
                 [ -h | --help  ]"
     exit 2
 }
 
-SHORT=n:N:m:s:b:t:p:i:c:d:g:e:a:M:P:L:o:q:B:h
+SHORT=n:N:m:s:b:t:p:i:c:d:g:e:a:M:P:L:o:q:B:D:h
 #nislands,Ndeme,migration,samples,size,type_model,pop,iterations,mutationrate,growrate,events
-LONG=nislands:Ndeme:migration:samples:sizes:type:population:iterations:parfile:,mode:,psmc-patterns:,psmc-s:,help
+LONG=nislands:Ndeme:migration:samples:sizes:type:population:iterations:parfile:,mode:,psmc-patterns:,psmc-s:,ditto:,help
 OPTS=$(getopt -a -n magikarp --options $SHORT --longoptions $LONG -- "$@")
 
 VALID_ARGUMENTS=$# # Returns the count of arguments that are in short or long options
@@ -71,6 +72,7 @@ NMD=0
 MODE=iicr,simulate,stats,psmc
 PSMC_PATTERNS=4+25*2+4+6
 PSMC_S=100
+DITTO=false
 
 eval set -- "$OPTS"
 
@@ -156,6 +158,10 @@ do
             PSMC_S=$2
             shift 2
             ;;
+    -D | --ditto )
+            DITTO=$2
+            shift 2
+            ;;
 
 
         -h | --help)
@@ -184,6 +190,8 @@ echo "No iterations specified"
 exit 1
 fi
 
+export DITTO
+
 
 
 
@@ -199,7 +207,8 @@ niter = $ITER
 chr = $CHR
 mu = $MU 
 gr= $GR
-events=$EVENTS"
+events=$EVENTS
+ditto=$DITTO"
 NMD=$NMD
 P=$P
 mode=$MODE
@@ -236,7 +245,8 @@ e=os.environ["EVENTS"];
 mode=os.environ["mode"];
 psmc_patterns=os.environ["psmc_patterns"];
 psmc_s=os.environ["psmc_s"];
-gy.GYARADOS_PAR(type=type,N=N,sizes=sizes,sample=sample,niter=niter, chr=chr, mu=mu, gr=gr, evs=e, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s) # run'
+ditto=os.environ["DITTO"];
+gy.GYARADOS_PAR(type=type,N=N,sizes=sizes,sample=sample,niter=niter, chr=chr, mu=mu, gr=gr, evs=e, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s, ditto=ditto) # run'
 
 
 
@@ -287,6 +297,7 @@ P=$P
 mode=$MODE
 psmc_patterns=$PSMC_PATTERNS
 psmc_s=$PSMC_S
+ditto=$DITTO
 "
 
 mode=$MODE
@@ -346,7 +357,8 @@ P=os.environ["P"] # import bash $NMD;
 mode=os.environ["mode"];
 psmc_patterns=os.environ["psmc_patterns"];
 psmc_s=os.environ["psmc_s"];
-gy.GYARADOS_PAR(type=type,N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,nislands=nislands,mig=mig,p=pop, mu=mu, gr=gr, evs=e, M=NMD, Nt=P, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s) # run'
+ditto=os.environ["DITTO"];
+gy.GYARADOS_PAR(type=type,N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,nislands=nislands,mig=mig,p=pop, mu=mu, gr=gr, evs=e, M=NMD, Nt=P, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s, ditto=ditto) # run'
 
 
 fi
@@ -380,7 +392,8 @@ niter=os.environ["ITER"] # import bash variable $ITER;
 mode=os.environ["MODE"];
 psmc_patterns=os.environ["PSMC_PATTERNS"];
 psmc_s=os.environ["PSMC_S"];
-gy.GYARADOS_PAR(type=type, par=par, niter=niter, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s)'
+ditto=os.environ["DITTO"];
+gy.GYARADOS_PAR(type=type, par=par, niter=niter, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s, ditto=ditto)'
 
 fi
 
@@ -430,6 +443,7 @@ NM=$NM
 mode=$MODE
 psmc_patterns=$PSMC_PATTERNS
 psmc_s=$PSMC_S
+ditto=$DITTO
 "
 
 mode=$MODE
@@ -488,7 +502,8 @@ NM=os.environ["NM"] # import bash $NM;
 mode=os.environ["mode"];
 psmc_patterns=os.environ["psmc_patterns"];
 psmc_s=os.environ["psmc_s"];
-gy.GYARADOS_PAR(type=type,L=L, N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,mig=mig,p=pop,mu=mu,rho=1e-8, evs=e, gr=gr,M=NM, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s) # run'
+ditto=os.environ["DITTO"];
+gy.GYARADOS_PAR(type=type,L=L, N=Ndeme,sizes=sizes,sample=sample,niter=niter,chr=chr,mig=mig,p=pop,mu=mu,rho=1e-8, evs=e, gr=gr,M=NM, mode=mode, psmc_patterns=psmc_patterns, psmc_s=psmc_s, ditto=ditto) # run'
 
 
 fi

@@ -64,7 +64,7 @@ def logspace(limit,start, n):
 
 lin_vector=np.linspace(50,100000, num=2000)
 log_vector=gy.logspace(100000+1,50, 400)
-log_vector=gy.logspace(5000000+1,50, 200)
+log_vector=gy.logspace(50000+1,50, 200)
 log_vector_sst=gy.logspace(100000+1,50, 400)
 log_vector_in=gy.logspace(50000+1,50, 200)
 log_vector_in=log_vector
@@ -72,8 +72,9 @@ log_vector_sst=log_vector
 #log_vector=gy.logspace(100000000+1,50, 40000)
 #lin_vector=np.linspace(50,450000, num=2000)
 #log_vector=gy.logspace(450000+1,20, 600) ## NISHA LOG VECTOR
+log_vector=gy.logspace(50000+1,50, 200)
 
-DEFAULT_GYARADOS_MODE = "iicr,simulate,stats,psmc"
+DEFAULT_GYARADOS_MODE = "iicr,simulate,stats,psmc, smcpp"
 DEFAULT_PSMC_PATTERN = "4+25*2+4+6"
 DEFAULT_PSMC_S = 100
 
@@ -3471,7 +3472,7 @@ def SMC_estimate(it,r,dis,p,s=0):
     '''
     #smc++ estimate 1e-8 toy.*.smc.gz
     #sentence="smc++ estimate "+str(r.mu)+" "+it.dir+"/smcpp/*_deme_"+str(p)+"_ind_"+dis+".*.smc.gz -o "+it.dir+"/smcpp --base _deme_"+str(p)+"_ind_"+str(dis)+"_s"+str(s)+" --timepoints "+str(s)+" 100000"
-    sentence="smc++ estimate "+str(r.mu)+" "+it.dir+"/smcpp/*_deme_"+str(p)+"_ind_"+dis+".*.smc.gz -o "+it.dir+"/smcpp --base _deme_"+str(p)+"_ind_"+str(dis)+"_s"+str(s)+" --timepoints "+str(s)+" 100000 --knots 40"
+    sentence="smc++ estimate "+str(r.mu)+" "+it.dir+"/smcpp/*_deme_"+str(p)+"_ind_"+dis+".*.smc.gz -o "+it.dir+"/smcpp --base _deme_"+str(p)+"_ind_"+str(dis)+"_s"+str(s)+" --timepoints "+str(s)+" 100000"
     
     print("Running SMC++ estimation")
     print(sentence)

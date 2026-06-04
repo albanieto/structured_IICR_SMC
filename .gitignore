@@ -1,5 +1,5 @@
 # Ignore folders anywhere in the repo whose names start with these prefixes
-StSi*/
+StS*/
 pan*/
 SST*/
 1D*/

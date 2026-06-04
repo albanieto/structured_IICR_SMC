@@ -24,7 +24,7 @@ POP=1
 SIZES=100000000
 CHROMOSOMES=5
 MU=1e-8
-MODE='iicr,simulate,stats,smcpp'
+MODE='smcpp'
 
 python run_psmc_fim_vector.py \
   --d-vector "${D}" \

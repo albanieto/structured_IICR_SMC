@@ -4,7 +4,7 @@
 #SBATCH --threads=1
 #SBATCH --output=R-%x.%j.out
 #SBATCH --mem=30000
-
+#SBATCH -t 2-00:00:00
 
 ### MODULES
 

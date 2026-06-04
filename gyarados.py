@@ -1476,7 +1476,7 @@ def GYARADOS_WORK(i, j_name, p, mode=DEFAULT_GYARADOS_MODE, psmc_s=DEFAULT_PSMC_
             tons,counts=gy.FSC2_fsfs(r,gen,deme) 
             sfs=counts
             print("SFS count for", it.name, sfs)
-            if len(sfs)!=0:
+            if sum(sfs)!=0:
                 sst=gy.SFS_stats(sfs,tons,counts,it.fullname,r.sizes,r,deme) 
 
             if r.mtype == "panmictic": # if itsbig only one population remains in it.gen_path
@@ -1812,19 +1812,24 @@ def FSC2_fsfs(r,gen,p, filter_1pop=True):
     '''
     if filter_1pop:
         gen_1p=gy.FSC2_gen_filter_1p(gen,int(p))
+    else:
+        gen_1p=gen
     
     if r.mtype!="panmictic":
-        snp_counts=np.where(gen_1p.sum(axis=1)>r.samples[int(p)-1]//2,r.samples[int(p)-1]-gen_1p.sum(axis=1),gen_1p.sum(axis=1))
-        tons, counts = np.unique(snp_counts, return_counts=True)
-        tons=tons[1:]
-        counts=counts[1:]
+        sample=int(r.samples[int(p)-1])
+        max_count=sample//2
+        snp_counts=np.where(gen_1p.sum(axis=1)>max_count,sample-gen_1p.sum(axis=1),gen_1p.sum(axis=1))
     else:
         sample=int(r.samples[0]) ########################### MEH
         max_count=sample//2
         print("Sample is",sample, type(sample),". Max count for fSFS is ", max_count)
         snp_counts=np.where(gen_1p.sum(axis=1)>max_count,sample-gen_1p.sum(axis=1),gen_1p.sum(axis=1))
-        tons, counts = np.unique(snp_counts, return_counts=True)
-        
+
+    snp_counts=np.asarray(snp_counts, dtype=int)
+    folded_counts=np.bincount(snp_counts, minlength=max_count+1)
+    tons=np.arange(1, max_count+1)
+    counts=folded_counts[1:max_count+1]
+
     return tons,counts
 
 def FSC2_direct_fsfs(r_samples,n_sampled_pops,gen,p, filter_1pop=True):
@@ -1834,19 +1839,25 @@ def FSC2_direct_fsfs(r_samples,n_sampled_pops,gen,p, filter_1pop=True):
     '''
     if filter_1pop:
         gen_1p=gy.FSC2_gen_filter_1p(gen,int(p))
+    else:
+        gen_1p=gen
     
     if n_sampled_pops!=1:
-        snp_counts=np.where(gen_1p.sum(axis=1)>r_samples[int(p)-1]//2,r_samples[int(p)-1]-gen_1p.sum(axis=1),gen_1p.sum(axis=1))
-        tons, counts = np.unique(snp_counts, return_counts=True)
-        tons=tons[1:]
-        counts=counts[1:]
+        sample=int(r_samples[int(p)-1])
+        max_count=sample//2
+        snp_counts=np.where(gen_1p.sum(axis=1)>max_count,sample-gen_1p.sum(axis=1),gen_1p.sum(axis=1))
     else:
         
         sample=int(r_samples[0])
         max_count=sample//2
         print("Sample is",sample, type(sample),". Max count for fSFS is ", max_count)
         snp_counts=np.where(gen_1p.sum(axis=1)>max_count,sample-gen_1p.sum(axis=1),gen_1p.sum(axis=1))
-        tons, counts = np.unique(snp_counts, return_counts=True)
+
+    snp_counts=np.asarray(snp_counts, dtype=int)
+    folded_counts=np.bincount(snp_counts, minlength=max_count+1)
+    tons=np.arange(1, max_count+1)
+    counts=folded_counts[1:max_count+1]
+
     return tons,counts
 
 def FSC2_gen2VCF(gen,it,p=0):

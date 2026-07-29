@@ -1,12 +1,4 @@
-# Gyarados external-tool configuration.
-#
-# Install these three programs as described in README.md, then replace each
-# value below with the exact call to use. Use installation paths without spaces.
-
 fastsimcoal2: /EDIT/absolute/path/to/fsc28
 psmc: /EDIT/absolute/path/to/psmc/psmc
-smcpp: /EDIT/exact/call/to/smc++
-
-# Use "none" when smc++ needs no separate Conda environment. Otherwise enter
-# only its Conda environment name, for example smcpp.
-smcpp_environment: none
+smcpp: smc++
+smcpp_environment: smcpp

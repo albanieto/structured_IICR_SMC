@@ -14,7 +14,9 @@ import gyarados
 import yaml
 
 
-VERSION = "0.3.0"
+VERSION = "0.5.0"
+
+MODEL_TYPES = ("fim", "2dsst", "1dsst", "panmictic", "free")
 
 PROGRAMS = (
     "fastsimcoal2",
@@ -184,37 +186,125 @@ def calculate_migration(M: float, population_size: int, demes: int) -> float:
     return M / ((demes - 1) * 2.0 * population_size)
 
 
+def calculate_stepping_stone_migration(M: float, population_size: int) -> float:
+    return M / population_size
+
+
+def write_1dsst_par(
+    path: Path,
+    population_size: int,
+    demes: int,
+    migration: float,
+    sampled_populations: Iterable[int],
+    samples: int,
+    sizes: Iterable[int],
+    mu: float,
+    rho: float,
+) -> None:
+    """Write the free-model parameter file for a one-dimensional stepping stone."""
+    sizes = list(sizes)
+    selected = set(sampled_populations)
+    with path.open("w") as stream:
+        stream.write("//Number of population samples (demes)\n%d\n" % demes)
+        stream.write("//Population effective sizes (number of genes 2*diploids)\n")
+        for _ in range(demes):
+            stream.write("%d\n" % population_size)
+        stream.write("//Sample sizes (number of genes 2*diploids)\n")
+        for deme in range(1, demes + 1):
+            stream.write("%d\n" % (samples if deme in selected else 0))
+        stream.write("//Grow rates: negative grow rates implies population expansion\n")
+        for _ in range(demes):
+            stream.write("0\n")
+        stream.write("//Number of migration matrixes\n1\n")
+        stream.write("//migration matrix\n")
+        for source in range(demes):
+            row = [
+                str(migration) if abs(source - destination) == 1 else "0"
+                for destination in range(demes)
+            ]
+            stream.write(" ".join(row) + "\n")
+        stream.write(
+            "//historical event: time, source, sink, migrants, new deme size, "
+            "new growth rate, migration matrix index\n0 events\n"
+        )
+        stream.write(
+            "//Number of independent loci [chromosome] "
+            "(Number of sequences of 300 bp per gamete)\n%d %d\n"
+            % (len(sizes), 0 if len(set(sizes)) == 1 else 1)
+        )
+        for size in sizes:
+            stream.write("//Chromosome structure 1 begins with number of loci\n1\n")
+            stream.write(
+                "//per block: data type, number of loci, per generation "
+                "recombination and mutation rates and optional parameters\n"
+            )
+            stream.write("DNA %d %s %s\n" % (size, rho, mu))
+
+
 def run(args: argparse.Namespace) -> int:
     modes = gyarados.parse_run_modes(args.mode)
     tool_config = load_tool_config(args.config)
     programs = configure_programs(tool_config, modes, strict=not args.dry_run)
-    migration = (
-        args.migration
-        if args.migration is not None
-        else calculate_migration(args.M, args.population_size, args.demes)
-    )
-    scaled_migration = (
-        args.M
-        if args.M is not None
-        else 2.0 * args.population_size * migration * (args.demes - 1)
-    )
+    if args.model == "fim":
+        migration = (
+            args.migration
+            if args.migration is not None
+            else calculate_migration(args.M, args.population_size, args.demes)
+        )
+        scaled_migration = (
+            args.M
+            if args.M is not None
+            else 2.0 * args.population_size * migration * (args.demes - 1)
+        )
+        model_demes = args.demes
+    elif args.model in {"1dsst", "2dsst"}:
+        migration = (
+            args.migration
+            if args.migration is not None
+            else calculate_stepping_stone_migration(args.M, args.population_size)
+        )
+        scaled_migration = (
+            args.M
+            if args.M is not None
+            else args.population_size * migration
+        )
+        model_demes = args.demes if args.model == "1dsst" else args.grid_size ** 2
+    else:
+        migration = None
+        scaled_migration = None
+        model_demes = 1 if args.model == "panmictic" else None
+
     output_dir = Path(args.output_dir).expanduser().resolve()
+    par_file = (
+        Path(args.par_file).expanduser().resolve()
+        if args.par_file is not None
+        else None
+    )
 
     configuration = {
-        "model": "symmetric island",
+        "model": args.model,
         "output_dir": str(output_dir),
-        "demes": args.demes,
-        "haploid_population_size_per_deme": args.population_size,
+        "demes": model_demes,
+        "grid_size": args.grid_size if args.model == "2dsst" else None,
+        "par_file": str(par_file) if par_file is not None else None,
+        "haploid_population_size_per_deme": (
+            None if args.model == "free" else args.population_size
+        ),
         "migration_rate": migration,
         "M": scaled_migration,
-        "sampled_haploid_genomes": args.samples,
-        "chromosome_sizes": args.sizes,
+        "sampled_haploid_genomes": None if args.model == "free" else args.samples,
+        "chromosome_sizes": None if args.model == "free" else args.sizes,
+        "number_of_chromosomes": (
+            None if args.model == "free" else args.chromosomes
+        ),
         "iterations": args.iterations,
-        "sampled_deme": args.population,
-        "mutation_rate": args.mu,
-        "recombination_rate": args.rho,
+        "sampled_populations": (
+            None if args.model == "free" else args.sampled_populations
+        ),
+        "mutation_rate": None if args.model == "free" else args.mu,
+        "recombination_rate": None if args.model == "free" else args.rho,
         "modes": sorted(modes),
-        "iicr_replicates": args.iicr_replicates,
+        "iicr_T2_simulations": gyarados.IICR_T2_SIMULATIONS,
         "psmc_s": args.psmc_s,
         "psmc_patterns": args.psmc_pattern,
         "ditto": args.ditto,
@@ -234,29 +324,94 @@ def run(args: argparse.Namespace) -> int:
     previous_dir = Path.cwd()
     try:
         os.chdir(output_dir)
-        gyarados.GYARADOS_PAR(
-            type=1,
-            N=args.population_size,
-            sizes=",".join(str(size) for size in args.sizes),
-            sample=args.samples,
-            niter=args.iterations,
-            chr=len(args.sizes),
-            nislands=args.demes,
-            mig=migration,
-            p=args.population,
-            mu=args.mu,
-            rho=args.rho,
-            evs="0",
-            gr=0,
-            M=scaled_migration,
-            Nt=args.population_size * args.demes,
-            mode=args.mode,
-            psmc_patterns=",".join(args.psmc_pattern),
-            psmc_s=args.psmc_s,
-            ditto=args.ditto,
-            backend="local",
-            iicr_replicates=args.iicr_replicates,
-        )
+        common = {
+            "niter": args.iterations,
+            "mode": args.mode,
+            "psmc_patterns": ",".join(args.psmc_pattern),
+            "psmc_s": args.psmc_s,
+            "ditto": args.ditto,
+            "backend": "local",
+        }
+        sizes = ",".join(str(size) for size in args.sizes)
+
+        if args.model == "fim":
+            gyarados.GYARADOS_PAR(
+                type=1,
+                N=args.population_size,
+                sizes=sizes,
+                sample=args.samples,
+                chr=len(args.sizes),
+                nislands=args.demes,
+                mig=migration,
+                p=args.sampled_populations[0],
+                mu=args.mu,
+                rho=args.rho,
+                evs="0",
+                gr=0,
+                M=scaled_migration,
+                Nt=args.population_size * args.demes,
+                **common,
+            )
+        elif args.model == "2dsst":
+            gyarados.GYARADOS_PAR(
+                type=4,
+                L=args.grid_size,
+                N=args.population_size,
+                sizes=sizes,
+                sample=args.samples,
+                chr=len(args.sizes),
+                mig=migration,
+                p=",".join(str(population) for population in args.sampled_populations),
+                mu=args.mu,
+                rho=args.rho,
+                evs="0",
+                gr=0,
+                M=scaled_migration,
+                **common,
+            )
+        elif args.model == "1dsst":
+            generated_par = output_dir / (
+                "1DSST_d%d_N%d_m%.4E.par"
+                % (args.demes, args.population_size, migration)
+            )
+            write_1dsst_par(
+                generated_par,
+                args.population_size,
+                args.demes,
+                migration,
+                args.sampled_populations,
+                args.samples,
+                args.sizes,
+                args.mu,
+                args.rho,
+            )
+            gyarados.GYARADOS_PAR(
+                type=3,
+                par=str(generated_par),
+                p=args.sampled_populations[0],
+                **common,
+            )
+        elif args.model == "panmictic":
+            gyarados.GYARADOS_PAR(
+                type=2,
+                N=args.population_size,
+                sizes=sizes,
+                sample=args.samples,
+                chr=len(args.sizes),
+                p=1,
+                mu=args.mu,
+                rho=args.rho,
+                evs="0",
+                gr=0,
+                **common,
+            )
+        else:
+            gyarados.GYARADOS_PAR(
+                type=3,
+                par=str(par_file),
+                p=1,
+                **common,
+            )
     finally:
         os.chdir(previous_dir)
     print("\nFinished. Results are in:", output_dir / "RESULTS")
@@ -266,10 +421,7 @@ def run(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gyarados",
-        description=(
-            "Run the Gyarados structured-IICR pipeline locally. "
-            "No SLURM installation is required."
-        ),
+        description="Run the Gyarados structured-IICR pipeline.",
     )
     parser.add_argument("--version", action="version", version="%(prog)s " + VERSION)
     parser.add_argument(
@@ -285,12 +437,28 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.set_defaults(function=doctor)
 
     run_parser = subparsers.add_parser(
-        "run", help="Run a symmetric island model sequentially on this machine."
+        "run", help="Run one demographic model sequentially on this machine."
+    )
+    run_parser.add_argument(
+        "--model",
+        choices=MODEL_TYPES,
+        default="fim",
+        help="Demographic model: fim, 2dsst, 1dsst, panmictic, or free.",
     )
     run_parser.add_argument(
         "--output-dir",
         default="gyarados_output",
         help="Working/output directory (default: ./gyarados_output).",
+    )
+    run_parser.add_argument(
+        "--grid-size",
+        type=int,
+        default=3,
+        help="Side length L of the square grid used by 2dsst (default: 3).",
+    )
+    run_parser.add_argument(
+        "--par-file",
+        help="Existing fastsimcoal2 .par file required by the free model.",
     )
     run_parser.add_argument("--demes", type=int, default=5)
     run_parser.add_argument(
@@ -304,7 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--M",
         type=float,
         default=None,
-        help="Scaled migration M=2*N*m*(d-1) (default: 5).",
+        help="M=2*N*m*(d-1) for fim and M=N*m for stepping stones (default: 5).",
     )
     migration_group.add_argument(
         "--migration",
@@ -325,20 +493,31 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Chromosome length in bp. Repeat for multiple chromosomes.",
     )
+    run_parser.add_argument(
+        "--chromosomes",
+        type=int,
+        default=1,
+        help="Number of chromosomes (default: 1).",
+    )
     run_parser.add_argument("--iterations", type=int, default=1)
-    run_parser.add_argument("--population", type=int, default=1)
+    run_parser.add_argument(
+        "--sampled-population",
+        dest="sampled_populations",
+        type=int,
+        action="append",
+        default=None,
+        help=(
+            "Population used for inference. Repeat for several populations "
+            "in 1dsst/2dsst. The default is population 1 for FIM and "
+            "panmictic; free reads sampling from its .par file."
+        ),
+    )
     run_parser.add_argument("--mu", type=float, default=1e-8)
     run_parser.add_argument("--rho", type=float, default=1e-8)
     run_parser.add_argument(
         "--mode",
         default="iicr,simulate,stats,psmc",
         help="Comma-separated: iicr,simulate,stats,psmc,smcpp,transition_matrix,none.",
-    )
-    run_parser.add_argument(
-        "--iicr-replicates",
-        type=int,
-        default=100000,
-        help="Independent fastsimcoal2 loci used for the IICR (default: 100000).",
     )
     run_parser.add_argument("--psmc-s", type=int, default=100)
     run_parser.add_argument(
@@ -360,14 +539,47 @@ def build_parser() -> argparse.ArgumentParser:
 def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.command != "run":
         return
-    if args.sizes is None:
-        args.sizes = [10_000_000]
+    if args.chromosomes <= 0:
+        parser.error("--chromosomes must be positive.")
+    if args.model == "free":
+        args.sizes = []
+    elif args.sizes is None:
+        args.sizes = [10_000_000] * args.chromosomes
+    elif len(args.sizes) == 1 and args.chromosomes > 1:
+        args.sizes = args.sizes * args.chromosomes
+    elif len(args.sizes) != args.chromosomes:
+        parser.error(
+            "Provide one --size for all chromosomes or one --size per chromosome."
+        )
     if args.M is None and args.migration is None:
         args.M = 5.0
     if args.psmc_pattern is None:
         args.psmc_pattern = [gyarados.DEFAULT_PSMC_PATTERN]
-    if args.demes < 2:
-        parser.error("--demes must be at least 2 for an island model.")
+    populations_were_provided = args.sampled_populations is not None
+    if args.model == "free":
+        if populations_were_provided:
+            parser.error(
+                "Sampling for a free model is defined inside its --par-file."
+            )
+        args.sampled_populations = []
+    elif args.sampled_populations is None:
+        if args.model == "1dsst":
+            args.sampled_populations = [(args.demes + 1) // 2]
+        elif args.model == "2dsst":
+            args.sampled_populations = [(args.grid_size ** 2 + 1) // 2]
+        else:
+            args.sampled_populations = [1]
+    else:
+        args.sampled_populations = list(dict.fromkeys(args.sampled_populations))
+    if args.model in {"fim", "1dsst"} and args.demes < 2:
+        parser.error("--demes must be at least 2 for fim and 1dsst.")
+    if args.model == "2dsst" and args.grid_size < 2:
+        parser.error("--grid-size must be at least 2 for 2dsst.")
+    if args.model == "free":
+        if args.par_file is None:
+            parser.error("--par-file is required when --model free is selected.")
+        if not Path(args.par_file).expanduser().is_file():
+            parser.error("--par-file does not exist: %s" % args.par_file)
     if args.population_size <= 0:
         parser.error("--population-size must be positive.")
     if args.M is not None and args.M <= 0:
@@ -376,16 +588,34 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         parser.error("--migration must be positive.")
     if args.samples <= 0:
         parser.error("--samples must be positive.")
-    if "psmc" in gyarados.parse_run_modes(args.mode) and args.samples % 2:
+    if (
+        args.model != "free"
+        and "psmc" in gyarados.parse_run_modes(args.mode)
+        and args.samples % 2
+    ):
         parser.error("--samples must be even when PSMC is requested.")
-    if not 1 <= args.population <= args.demes:
-        parser.error("--population must be between 1 and --demes.")
+    if (
+        args.model in {"fim", "1dsst"}
+        and any(
+            population < 1 or population > args.demes
+            for population in args.sampled_populations
+        )
+    ):
+        parser.error("--sampled-population must be between 1 and --demes.")
+    if (
+        args.model == "2dsst"
+        and any(
+            population < 1 or population > args.grid_size ** 2
+            for population in args.sampled_populations
+        )
+    ):
+        parser.error("--sampled-population must be within the 2dsst grid.")
+    if args.model == "panmictic" and args.sampled_populations != [1]:
+        parser.error("Only population 1 exists in a panmictic model.")
     if any(size <= 0 for size in args.sizes):
         parser.error("Every --size must be positive.")
     if args.mu <= 0 or args.rho < 0:
         parser.error("--mu must be positive and --rho cannot be negative.")
-    if args.iicr_replicates <= 0:
-        parser.error("--iicr-replicates must be positive.")
     if args.ditto and "iicr" not in gyarados.parse_run_modes(args.mode):
         parser.error("--ditto requires a mode containing iicr.")
 

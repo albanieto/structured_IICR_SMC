@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ditto: turn a simulated IICR into a panmictic fastsimcoal2 model."""
 
 import os

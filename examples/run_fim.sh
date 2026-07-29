@@ -3,7 +3,7 @@
 set -euo pipefail
 
 GYARADOS_REPOSITORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-GYARADOS_OUTPUT="${GYARADOS_OUTPUT:-${PWD}/gyarados_example_output}"
+GYARADOS_OUTPUT="${GYARADOS_OUTPUT:-${PWD}/gyarados_fim_output}"
 
 python3 "${GYARADOS_REPOSITORY}/gyarados_cli.py" \
   --config "${GYARADOS_REPOSITORY}/tools.yml" run \
@@ -18,7 +18,5 @@ python3 "${GYARADOS_REPOSITORY}/gyarados_cli.py" \
   --iterations 1 \
   --mu 1e-8 \
   --rho 1e-8 \
-  --mode iicr,simulate,stats,psmc \
-  --psmc-s 100 \
-  --psmc-pattern '4+25*2+4+6' \
+  --mode iicr,simulate \
   "$@"

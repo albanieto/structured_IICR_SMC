@@ -220,5 +220,4 @@ def run_ditto_for_model(source_model, p, niter, mode, psmc_patterns=None, psmc_s
             mode=mode,
             psmc_patterns=psmc_patterns,
             psmc_s=psmc_s,
-            ditto=False,
         )

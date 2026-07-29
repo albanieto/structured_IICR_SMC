@@ -307,7 +307,7 @@ def run(args: argparse.Namespace) -> int:
         "iicr_T2_simulations": gyarados.IICR_T2_SIMULATIONS,
         "psmc_s": args.psmc_s,
         "psmc_patterns": args.psmc_pattern,
-        "ditto": args.ditto,
+        "ditto": "ditto" in modes,
         "tool_config": tool_config["_path"],
         "programs": {
             key: programs[key]
@@ -329,7 +329,6 @@ def run(args: argparse.Namespace) -> int:
             "mode": args.mode,
             "psmc_patterns": ",".join(args.psmc_pattern),
             "psmc_s": args.psmc_s,
-            "ditto": args.ditto,
             "backend": "local",
         }
         sizes = ",".join(str(size) for size in args.sizes)
@@ -517,7 +516,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--mode",
         default="iicr,simulate,stats,psmc",
-        help="Comma-separated: iicr,simulate,stats,psmc,smcpp,transition_matrix,none.",
+        help="Comma-separated: iicr,simulate,stats,psmc,smcpp,ditto,none.",
     )
     run_parser.add_argument("--psmc-s", type=int, default=100)
     run_parser.add_argument(
@@ -526,7 +525,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="PSMC -p vector. Repeat for more than one vector.",
     )
-    run_parser.add_argument("--ditto", action="store_true")
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -616,8 +614,9 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         parser.error("Every --size must be positive.")
     if args.mu <= 0 or args.rho < 0:
         parser.error("--mu must be positive and --rho cannot be negative.")
-    if args.ditto and "iicr" not in gyarados.parse_run_modes(args.mode):
-        parser.error("--ditto requires a mode containing iicr.")
+    modes = gyarados.parse_run_modes(args.mode)
+    if "ditto" in modes and "iicr" not in modes:
+        parser.error("The ditto mode requires iicr.")
 
 
 def main() -> int:

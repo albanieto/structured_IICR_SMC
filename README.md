@@ -83,7 +83,16 @@ smcpp_environment: smcpp
 ```
 
 Gyarados runs only SMC++ commands inside the `smcpp` environment. The rest of
-the pipeline remains in the `gyarados` environment.
+the pipeline remains in the `gyarados` environment. Each `vcf2smc`, `estimate`
+and `plot` command is executed as:
+
+```text
+conda run --no-capture-output -n smcpp smc++ ...
+```
+
+The SMC++ environment ends when that command finishes, so the next pipeline
+step continues in `gyarados`. No manual activation or deactivation is needed
+inside the scripts.
 
 ### 6. Create the Gyarados environment
 
@@ -133,9 +142,15 @@ GYARADOS_OUTPUT=/data/my_run \
 | One-dimensional stepping stone | `examples/run_1dsst.sh` |
 | Panmictic | `examples/run_panmictic.sh` |
 | Free model | `examples/run_free.sh` |
+| FIM and its panmictic Ditto clone, including PSMC and SMC++ | `examples/run_fim_ditto.sh` |
 
-These five examples run `iicr,simulate` and require fastsimcoal2. The
-`examples/run_minimal.sh` example also runs statistics and PSMC.
+The first five examples run `iicr,simulate` and require fastsimcoal2. The
+`examples/run_minimal.sh` example also runs statistics and PSMC. The complete
+Ditto example requires fastsimcoal2, PSMC and SMC++:
+
+```bash
+/absolute/path/to/structured_IICR_SMC/examples/run_fim_ditto.sh
+```
 
 ## Run a model directly
 
@@ -184,6 +199,16 @@ contains populations 1 and 2 so that FST can be calculated automatically.
 
 The IICR always uses \(10^7\) simulated T2 values.
 
+To calculate the original model, generate its panmictic Ditto clone and run
+all analyses on both:
+
+```bash
+--mode iicr,simulate,stats,psmc,smcpp,ditto
+```
+
+`ditto` requires `iicr`. One panmictic clone is generated for each sampled
+population.
+
 ## Modes
 
 Modes are comma-separated:
@@ -195,7 +220,7 @@ Modes are comma-separated:
 | `stats` | Calculate sequence statistics and FST |
 | `psmc` | Run PSMC |
 | `smcpp` | Run SMC++ |
-| `transition_matrix` | Generate transition-matrix input |
+| `ditto` | Generate a panmictic clone and run the selected analyses on it |
 | `none` | Create model files only |
 
 For example:

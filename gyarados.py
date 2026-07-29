@@ -68,12 +68,7 @@ DEFAULT_PSMC_PATTERN = "4+25*2+4+6"
 DEFAULT_PSMC_S = 100
 IICR_T2_SIMULATIONS = 10_000_000
 
-MODE_ATOMS = {"iicr", "simulate", "stats", "psmc", "smcpp", "transition_matrix"}
-
-def parse_bool(value):
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+MODE_ATOMS = {"iicr", "simulate", "stats", "psmc", "smcpp", "ditto"}
 
 def parse_run_modes(mode=None):
     if mode is None or str(mode).strip() == "":
@@ -711,14 +706,14 @@ def get_from_json(j_son):
         data = json.load(json_file)
     return data
 
-def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, par=None,M=None, Nt=None, mode=DEFAULT_GYARADOS_MODE, psmc_patterns=None, psmc_s=DEFAULT_PSMC_S, ditto=False, backend="local"):
+def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,nislands=None,mig=None,p=1,mu=1e-8,rho=1e-8, evs=[], gr=0, par=None,M=None, Nt=None, mode=DEFAULT_GYARADOS_MODE, psmc_patterns=None, psmc_s=DEFAULT_PSMC_S, backend="local"):
 
     if backend != "local":
         raise ValueError("Only backend='local' is supported.")
     run_modes = parse_run_modes(mode)
     psmc_patterns = ",".join(parse_psmc_patterns(psmc_patterns))
     psmc_s = str(psmc_s)
-    ditto = parse_bool(ditto)
+    ditto = "ditto" in run_modes
     print("Run modes:", ",".join(sorted(run_modes)) if run_modes else "none")
     print("PSMC -p vectors:", psmc_patterns)
     print("PSMC -s:", psmc_s)
@@ -855,11 +850,12 @@ def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,
         print("Skipping IICR because mode is", mode)
 
     if ditto:
+        clone_mode=",".join(sorted(run_modes - {"ditto"}))
         gy_ditto.run_ditto_for_model(
             r,
             p,
             niter=niter,
-            mode=mode,
+            mode=clone_mode,
             psmc_patterns=psmc_patterns,
             psmc_s=psmc_s,
             run_gyarados=lambda **kwargs: GYARADOS_PAR(
@@ -868,7 +864,7 @@ def GYARADOS_PAR(type,L=None, N=None,sizes=None,sample=None,niter=None,chr=None,
             )
         )
 
-    worker_modes = run_modes.intersection({"simulate", "stats", "psmc", "smcpp", "transition_matrix"})
+    worker_modes = run_modes.intersection({"simulate", "stats", "psmc", "smcpp"})
     if worker_modes:
         for i in range(1,int(niter)+1):
             GYARADOS_WORK(
@@ -921,7 +917,7 @@ def GYARADOS_WORK(i, j_name, p, mode=DEFAULT_GYARADOS_MODE, psmc_s=DEFAULT_PSMC_
         print("Starting repetition", it.name)
         print("WE start with deme", deme)
 
-        needs_sequence_simulation = bool(run_modes.intersection({"simulate", "transition_matrix"}))
+        needs_sequence_simulation = "simulate" in run_modes
         if needs_sequence_simulation and deme==sampling_demes[0]:
             shutil.copyfile(r.par,it.par)
             print("Running fsc2...",i)
@@ -936,13 +932,6 @@ def GYARADOS_WORK(i, j_name, p, mode=DEFAULT_GYARADOS_MODE, psmc_s=DEFAULT_PSMC_
         else:
             print("Skipping FSC2 simulation for this deme or mode.")
 
-        transition_matrix_only = (
-            "transition_matrix" in run_modes
-            and not run_modes.intersection({"stats", "psmc", "smcpp"})
-        )
-        if transition_matrix_only:
-            print("Transition matrix mode requested; sequence simulation output was generated/copied, stopping before stats/inference for this deme.")
-            continue
         if "stats" not in run_modes:
             print("Skipping sequence summary statistics because mode is", mode)
             gen = None

@@ -1,136 +1,320 @@
-GYARADOS structured IICR/SMC pipeline
-=====================================
+# Gyarados: portable structured-IICR pipeline
 
-This repository runs fastsimcoal2 island/stepping-stone simulations, calculates
-IICR summaries, and launches PSMC/SMC++ inference jobs on the Genobioinfo
-cluster. The code is old, beloved, and occasionally sharp-edged, so the current
-entry points keep the original defaults while adding explicit run modes.
+Gyarados simulates symmetric island models with fastsimcoal2, calculates the
+simulated IICR, and can run sequence statistics, PSMC, and SMC++ locally.
 
-Main entry points
------------------
+It runs from any directory and does not require SLURM, cluster modules, or a
+particular folder structure. All generated files are written below the
+directory selected with `--output-dir`.
 
-- `gyarados_call.sh`: SLURM-facing pipeline launcher.
-- `ditto.py`: converts a simulated IICR into a panmictic fastsimcoal2 `.par`
-  and launches that mimic through Gyarados when requested.
-- `run_island_models.py`: small island-model grid, now with optional mode and
-  PSMC parameters.
-- `run_psmc_fim_vector.py`: island-model driver with a configurable PSMC
-  time vector (`psmc -p`).
+The old cluster-specific repository is preserved unchanged in
+[`legacy/`](legacy/). New users should follow this README and use the files in
+the repository root.
 
-Run Modes
----------
+## Getting started
 
-Use `--mode` with `gyarados_call.sh` or the Python drivers.
+### Software required
 
-Modes are atomic steps. Combine them with commas:
+- Every Gyarados run requires fastsimcoal2.
+- The `psmc` mode additionally requires PSMC.
+- The `smcpp` mode additionally requires SMC++ in its own environment.
+- Git and Conda are always required.
 
-- `iicr`: calculate the simulated IICR curve.
-- `simulate`: run fastsimcoal2 for repetitions.
-- `stats`: calculate sequence summary statistics from existing `.gen.gz`.
-- `psmc`: run PSMC from existing repetitions.
-- `smcpp`: run SMC++ from existing repetitions.
-- `transition_matrix`: run/copy the sequence-simulation output used for
-  transition-matrix inspection. If used alone, it stops before stats/inference;
-  if combined with `stats`, `psmc`, or `smcpp`, those steps still run.
-- `none`: create/copy model files but submit no repetition jobs.
+The supplied `gyarados` Conda environment installs Python, NumPy, pandas,
+SciPy, PyYAML, seqtk, bgzip, and tabix. It does not install fastsimcoal2,
+PSMC, or SMC++.
 
-For IICRsim + summary statistics + PSMC:
+Linux is recommended. Windows users should use WSL with Conda for Linux.
+
+### 1. Download Gyarados
 
 ```bash
---mode iicr,simulate,stats,psmc
+git clone <REPOSITORY_URL> structured_IICR_SMC
+cd structured_IICR_SMC
 ```
 
-For the same plus SMC++:
+Replace `<REPOSITORY_URL>` with this repository's real URL.
+
+### 2. Install the external programs
+
+#### fastsimcoal2: required for every run
+
+1. Open the
+   [official fastsimcoal2 version 2.8 page](https://cmpg.unibe.ch/software/fastsimcoal28/).
+2. Download the archive for Linux or macOS.
+3. Extract it in a permanent location, for example
+   `/home/your_name/software/fastsimcoal2/`.
+4. Make the `fsc28` executable runnable:
 
 ```bash
+chmod +x /absolute/path/to/fsc28
+```
+
+Keep its exact absolute path for `tools.yml`.
+
+#### PSMC: required only for `psmc` mode
+
+Install a C compiler, `make`, and the zlib development headers. On Ubuntu or
+Debian:
+
+```bash
+sudo apt update
+sudo apt install git build-essential zlib1g-dev
+```
+
+On macOS:
+
+```bash
+xcode-select --install
+```
+
+Then clone [Heng Li's official PSMC repository](https://github.com/lh3/psmc)
+and compile PSMC and its utilities:
+
+```bash
+cd /where/you/keep/software
+git clone https://github.com/lh3/psmc.git
+cd psmc
+make
+(cd utils && make)
+```
+
+This creates the two commands needed by Gyarados:
+
+```text
+/where/you/keep/software/psmc/psmc
+/where/you/keep/software/psmc/utils/fq2psmcfa
+```
+
+Keep the absolute path to `psmc`. Gyarados obtains the `fq2psmcfa` path
+automatically from the `utils` directory of the same PSMC installation.
+
+#### SMC++: required only for `smcpp` mode
+
+Follow the installation instructions in the
+[official SMC++ repository maintained by the Terhorst group](https://github.com/popgenmethods/smcpp).
+Install it in a separate Conda environment. For example, if that environment
+is named `smcpp`, confirm the completed installation with:
+
+```bash
+conda activate smcpp
+smc++ --help
+conda deactivate
+```
+
+Keep only the Conda environment name for `tools.yml`.
+
+### 3. Edit `tools.yml`
+
+Every user must edit [`tools.yml`](tools.yml) before running Gyarados. Enter
+the three program calls and, when needed, the SMC++ Conda environment name:
+
+```yaml
+fastsimcoal2: /home/user/software/fastsimcoal2/fsc28
+psmc: /home/user/software/psmc/psmc
+smcpp: smc++
+smcpp_environment: smcpp
+```
+
+Use absolute installation paths without spaces. Gyarados executes exactly the
+values written here and does not guess executable names.
+
+If PSMC or SMC++ will not be used, write `none` for that program. If SMC++
+does not require a separate environment, write `none` for
+`smcpp_environment`:
+
+```yaml
+fastsimcoal2: /home/user/software/fastsimcoal2/fsc28
+psmc: none
+smcpp: none
+smcpp_environment: none
+```
+
+`fq2psmcfa` is taken from `utils/fq2psmcfa` beside the configured PSMC
+installation. `seqtk`, `bgzip`, and `tabix` are provided by the `gyarados`
+Conda environment and therefore do not appear in `tools.yml`.
+
+When `smcpp_environment` is not `none`, Gyarados runs only the SMC++ commands
+with `conda run -n ENVIRONMENT_NAME smc++ ...`. The main process remains in
+the `gyarados` environment throughout the analysis.
+
+### 4. Create the supplied `gyarados` environment
+
+From the repository root, run:
+
+```bash
+conda env create --file environment.yml
+conda activate gyarados
+```
+
+There is no additional `pip install` step for Gyarados. In every new terminal,
+activate this environment before running the pipeline:
+
+```bash
+conda activate gyarados
+```
+
+To update an existing environment:
+
+```bash
+conda env update --name gyarados --file environment.yml --prune
+```
+
+### 5. Check the configuration
+
+The command can be launched from any directory. Use the absolute path to the
+repository:
+
+```bash
+conda activate gyarados
+
+python /absolute/path/to/structured_IICR_SMC/gyarados_cli.py \
+  --config /absolute/path/to/structured_IICR_SMC/tools.yml \
+  doctor
+```
+
+The three program calls and the SMC++ environment setting are displayed.
+Programs set to `none` remain unavailable and are ignored unless their mode is
+requested.
+
+`doctor` reports the values read from `tools.yml`. It does not search for other
+program names or replace the user's choices.
+
+## Run the included example
+
+The included example uses `psmc`, so both fastsimcoal2 and PSMC must be
+configured in `tools.yml`.
+
+First preview it without creating files or executing scientific programs:
+
+```bash
+/absolute/path/to/structured_IICR_SMC/examples/run_minimal.sh --dry-run
+```
+
+Then run it:
+
+```bash
+/absolute/path/to/structured_IICR_SMC/examples/run_minimal.sh
+```
+
+The example script finds the repository from its own location, so it works
+regardless of the current directory.
+
+By default, it creates `gyarados_example_output` in the current directory. To
+choose another output directory:
+
+```bash
+GYARADOS_OUTPUT=/data/my_test \
+  /absolute/path/to/structured_IICR_SMC/examples/run_minimal.sh
+```
+
+The example uses:
+
+- five symmetric demes;
+- 1,400 haploid individuals per deme;
+- scaled migration \(M=5\);
+- two sampled haploid genomes from deme 1;
+- one 1 Mb chromosome;
+- one repetition;
+- 10,000 fastsimcoal2 loci for the demonstration IICR; and
+- `iicr,simulate,stats,psmc`.
+
+These deliberately small values test the installation and file flow. They are
+not suitable for a final biological analysis.
+
+## Run a model
+
+```bash
+conda activate gyarados
+
+python /absolute/path/to/structured_IICR_SMC/gyarados_cli.py \
+  --config /absolute/path/to/structured_IICR_SMC/tools.yml \
+  run \
+  --output-dir /data/project/run_01 \
+  --demes 50 \
+  --population-size 1400 \
+  --M 5 \
+  --samples 20 \
+  --size 100000000 \
+  --size 100000000 \
+  --iterations 1 \
+  --population 1 \
+  --mu 1e-8 \
+  --rho 1e-8 \
+  --mode iicr,simulate,stats,psmc \
+  --iicr-replicates 10000000 \
+  --psmc-s 100 \
+  --psmc-pattern '4+25*2+4+6'
+```
+
+Repeat `--size` once per chromosome. `--samples` is a haploid count and must be
+even for PSMC.
+
+The migration rate is:
+
+```text
+m = M / (2 × N × (d - 1))
+```
+
+`--migration` can be supplied instead of `--M`.
+
+Always preview a large run first:
+
+```bash
+python /absolute/path/to/gyarados_cli.py \
+  --config /absolute/path/to/tools.yml \
+  run ... --dry-run
+```
+
+## Run modes
+
+Modes are comma-separated:
+
+| Mode | Action |
+|---|---|
+| `iicr` | Simulate pairwise coalescence times with fastsimcoal2 and calculate the IICR |
+| `simulate` | Simulate sequence data with fastsimcoal2 |
+| `stats` | Calculate summary statistics from the simulated `.gen.gz` file |
+| `psmc` | Build diploid consensus sequences and run PSMC |
+| `smcpp` | Build/index VCF data and run the separately installed SMC++ |
+| `transition_matrix` | Produce output for transition-matrix inspection |
+| `none` | Create model files without external analysis |
+
+Examples:
+
+```bash
+--mode iicr
+--mode iicr,simulate,stats,psmc
 --mode iicr,simulate,stats,psmc,smcpp
 ```
 
-PSMC settings
--------------
+`psmc`, `smcpp`, and `stats` require a compatible existing simulation when
+`simulate` is omitted.
 
-Two PSMC knobs are now exposed:
+## Outputs
 
-- `--psmc-patterns`: comma-separated PSMC `-p` time vectors.
-- `--psmc-s`: fq2psmcfa `-s` bin size.
+Everything stays below `--output-dir`:
 
-Default PSMC settings:
-
-```bash
---psmc-patterns '4+25*2+4+6' --psmc-s 100
+```text
+output-dir/
+├── RESULTS/
+├── StSI_.../
+├── gyarados_models.log
+└── gyarados_time_check.log
 ```
 
-The model/repetition folder tree stays the same: simulated IICR, sequence
-summaries, PSMC, and SMC++ remain under the same demographic-model folder. PSMC
-outputs get a `_p...` suffix such as `_p4_25_2_4_6` or `_p27_2_4_6`; the model
-folder name still carries the simulated demographic parameters. Each PSMC
-summary contains that vector's mean PSMC-inferred IICR and the same model/deme
-IICRsim column for comparison. SMC++ summaries are written separately with the
-same IICRsim column.
+## Repository layout
 
-The simplest workflow is one PSMC vector per run/output directory. The code can
-accept comma-separated vectors, but separate folders are easier to audit.
-
-Ditto panmictic mimic
----------------------
-
-Add `--ditto true` to `gyarados_call.sh`, or `--ditto` to
-`run_psmc_fim_vector.py`, to also build a panmictic fastsimcoal2 `.par` from the
-simulated IICR. The Ditto run uses the same requested modes and PSMC settings as
-the original model.
-
-The original model tree is unchanged. Ditto creates a separate Free-model folder
-named like `<original_model>_deme_1_ditto`, with its own `RESULTS/...` folder,
-PSMC/SMC++ outputs, sequence summaries, and IICR summary tables.
-
-Examples
---------
-
-Original-style island run:
-
-```bash
-sbatch gyarados_call.sh -n 50 -N 2000 -m 2.5510E-05 -b 100000000 -c 5 \
-  -t 1 -p 1 -i 1 -d 1e-8 -s 2 -M 5 -P 100000
-```
-
-Same kind of run, but with PSMC and SMC++ enabled and multiple PSMC vectors:
-
-```bash
-sbatch gyarados_call.sh -n 50 -N 2000 -m 2.5510E-05 -b 100000000 -c 5 \
-  -t 1 -p 1 -i 1 -d 1e-8 -s 20 -M 5 -P 100000 \
-  --mode iicr,simulate,stats,psmc,smcpp \
-  --psmc-s 100 \
-  --psmc-patterns '4+25*2+4+6,27*2+4+6,2*2+2*2+25*2+1*4+1*6'
-```
-
-Same run, also producing the Ditto panmictic mimic:
-
-```bash
-sbatch gyarados_call.sh -n 50 -N 2000 -m 2.5510E-05 -b 100000000 -c 5 \
-  -t 1 -p 1 -i 1 -d 1e-8 -s 20 -M 5 -P 100000 \
-  --mode iicr,simulate,stats,psmc \
-  --psmc-patterns '4+25*2+4+6' \
-  --ditto true
-```
-
-Submit the built-in PSMC-vector driver:
-
-```bash
-python run_psmc_fim_vector.py --mode iicr,simulate,stats,psmc --samples 20 \
-  --psmc-pattern '27*2+4+6'
-```
-
-Preview commands without submitting:
-
-```bash
-python run_psmc_fim_vector.py --dry-run --mode iicr,simulate,stats,psmc,smcpp \
-  --psmc-pattern '4+25*2+4+6' \
-  --psmc-pattern '27*2+4+6'
-```
-
-Rerun only PSMC on an existing model/repetition set:
-
-```bash
-python run_psmc_fim_vector.py --mode psmc --samples 20 \
-  --psmc-pattern '16*1+19*2+1*4+1*6'
+```text
+.
+├── README.md
+├── environment.yml          supplied Conda environment named gyarados
+├── tools.yml                external calls and SMC++ environment
+├── header.txt               VCF header
+├── gyarados_cli.py          command-line interface
+├── gyarados.py              simulation and inference implementation
+├── ditto.py
+├── examples/
+│   └── run_minimal.sh
+└── legacy/                  unchanged historical repository
 ```
